@@ -210,9 +210,10 @@ def generate_room_positions(
     room_numbers
 ):
 
-    # One classroom occupies each side of a hexagon.  Floors with
-    # more than six rooms receive additional hexagons, arranged in
-    # rows of at most three.  Only corridor links sit between shapes.
+    # One classroom occupies each side of a hexagon. Hexagons are
+    # arranged in a grid: up to 3 per row, wrapping to a new row
+    # below once a row is full - matching a real floor plan layout
+    # rather than a single line or a ring.
     rooms_per_hexagon = 6
 
     hexagon_groups = [
@@ -220,16 +221,35 @@ def generate_room_positions(
         for index in range(0, len(room_numbers), rooms_per_hexagon)
     ]
 
-    hexagon_radius = 52
+    max_per_row = 3
 
-    # Arrange every hexagon around the staircase, like rooms around
-    # a central atrium.  The ring scales naturally from one to six
-    # hexagons while staying inside the 480x340 SVG viewBox.
-    ring_radius = 100
+    num_groups = len(hexagon_groups)
 
-    ring_center_x = 240
+    num_rows = math.ceil(num_groups / max_per_row)
 
-    ring_center_y = 170
+    margin = 20
+
+    # Reserve some space on the left for the staircase, which sits
+    # outside the room grid rather than inside it.
+    stairs_reserved_width = 60
+
+    usable_width = 480 - 2 * margin - stairs_reserved_width
+
+    usable_height = 340 - 2 * margin
+
+    slot_width = usable_width / max_per_row
+
+    slot_height = usable_height / num_rows
+
+    grid_left = margin + stairs_reserved_width
+
+    # 0.8 safety factor leaves a visible gap between hexagons, both
+    # horizontally and vertically.
+    hexagon_radius = min(
+        52,
+        (slot_width / 2 / 0.86) * 0.8,
+        (slot_height / 2 / 0.75) * 0.8
+    )
 
     side_positions = [
         (0.43, -0.75),
@@ -242,14 +262,13 @@ def generate_room_positions(
 
     for group_index, group in enumerate(hexagon_groups):
 
-        angle = (
-            -math.pi / 2
-            + 2 * math.pi * group_index / len(hexagon_groups)
-        )
+        row = group_index // max_per_row
 
-        center_x = ring_center_x + ring_radius * math.cos(angle)
+        col = group_index % max_per_row
 
-        center_y = ring_center_y + ring_radius * math.sin(angle)
+        center_x = grid_left + slot_width / 2 + col * slot_width
+
+        center_y = margin + slot_height / 2 + row * slot_height
 
         start_side = 0
 
@@ -284,10 +303,23 @@ def generate_room_positions(
 
             }
 
+    # Staircase sits just left of the grid, vertically centered
+    # relative to the full grid height (not the map height), so it
+    # lines up naturally next to whichever rooms are nearest it.
+    grid_total_height = slot_height * num_rows
+
+    stair_x = margin + stairs_reserved_width / 2
+
+    stair_y = margin + grid_total_height / 2
+
+    return stair_x, stair_y
+
 
 # =========================================================
 # CREATE ROOM POSITIONS
 # =========================================================
+
+stair_positions = {}
 
 for building, floors in \
         rooms_by_floor.items():
@@ -295,11 +327,13 @@ for building, floors in \
     for floor, room_numbers in \
             floors.items():
 
-        generate_room_positions(
+        stair_x, stair_y = generate_room_positions(
             building,
             floor,
             room_numbers
         )
+
+        stair_positions[(building, floor)] = (stair_x, stair_y)
 
 
 # =========================================================
@@ -316,11 +350,16 @@ for building in room_ranges:
             f"{building}-STAIRS-{floor}"
         )
 
+        stair_x, stair_y = stair_positions.get(
+            (building, floor),
+            (240, 170)  # fallback for a floor with no room data
+        )
+
         positions[stair_node] = {
 
-            "x": 240,
+            "x": stair_x,
 
-            "y": 170,
+            "y": stair_y,
 
             "floor": floor,
 
@@ -1216,7 +1255,7 @@ def get_path():
             max(
                 0,
                 len(result) - 1
-            ),
+        ),
 
         "path_coords":
             path_coords,
@@ -1225,7 +1264,7 @@ def get_path():
             get_directions(
                 graph,
                 result
-            )
+        )
 
     })
 
@@ -1414,7 +1453,7 @@ def get_floor():
             for name, pos
             in nodes_on_floor.items()
 
-                ],
+            ],
 
         "edges":
             edges
