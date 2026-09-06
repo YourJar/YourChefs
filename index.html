@@ -914,20 +914,22 @@
             svg.appendChild(square);
 
             // -------------------------------------------
-            // ROOM NUMBER ABOVE SQUARE
+            // ROOM NUMBER INSIDE SQUARE
             // -------------------------------------------
 
             const label = document.createElementNS(svgns, "text");
 
             label.setAttribute("x", pos.x);
 
-            label.setAttribute("y", pos.y - 18);
+            label.setAttribute("y", pos.y);
 
             label.setAttribute("text-anchor", "middle");
 
+            label.setAttribute("dominant-baseline", "central");
+
             label.setAttribute("font-family", "IBM Plex Mono, monospace");
 
-            label.setAttribute("font-size", "10.5");
+            label.setAttribute("font-size", "8.5");
 
             label.setAttribute("font-weight", "600");
 
@@ -1041,8 +1043,6 @@
 
         marker.setAttribute("id", "routeArrow");
 
-        // userSpaceOnUse keeps the head a fixed size so short
-        // corridors like 106-101 do not get giant stacked heads.
         marker.setAttribute("markerWidth", "10");
 
         marker.setAttribute("markerHeight", "10");
@@ -1100,21 +1100,6 @@
 
       // =========================================================
       // DRAW FLOOR TRANSITION
-      //
-      // This is the important fix.
-      //
-      // If the route reaches the staircase and the next route
-      // node is on another floor, we DON'T draw an arrow
-      // directly to the destination.
-      //
-      // Instead we show:
-      //
-      //       STAIRS
-      //          |
-      //          ↑
-      //       Floor 2
-      //
-      // This tells the user exactly where to go.
       // =========================================================
 
       function drawFloorTransition(svg, point, nextFloor) {
@@ -1144,10 +1129,6 @@
 
         svg.appendChild(line);
 
-        // -----------------------------------------------------
-        // Text
-        // -----------------------------------------------------
-
         const text = document.createElementNS(svgns, "text");
 
         text.setAttribute("x", x + 28);
@@ -1156,16 +1137,9 @@
 
         text.setAttribute("class", "floor-transition-text");
 
-        text.textContent =
-          direction > 0
-            ? `Go to ${getFloorName(nextFloor)}`
-            : `Go to ${getFloorName(nextFloor)}`;
+        text.textContent = `Go to ${getFloorName(nextFloor)}`;
 
         svg.appendChild(text);
-
-        // -----------------------------------------------------
-        // Make transition clickable.
-        // -----------------------------------------------------
 
         const group = document.createElementNS(svgns, "g");
 
@@ -1174,11 +1148,6 @@
         group.addEventListener("click", () => {
           moveToFloor(nextFloor);
         });
-
-        /*
-         * Transparent hit area makes the
-         * transition easier to click.
-         */
 
         const hitArea = document.createElementNS(svgns, "rect");
 
@@ -1193,11 +1162,6 @@
         hitArea.setAttribute("fill", "transparent");
 
         group.appendChild(hitArea);
-
-        /*
-         * Put the group at the end so it
-         * receives the click.
-         */
 
         svg.appendChild(group);
       }
@@ -1292,11 +1256,6 @@
       function highlightPathOnCurrentView() {
         const svg = document.getElementById("floorMap");
 
-        /*
-         * Get route points belonging to this
-         * building and floor.
-         */
-
         const onThisView = lastPathCoords.filter(
           (p) => p.building === currentBuilding && p.floor === currentFloor,
         );
@@ -1332,9 +1291,7 @@
         const TWO_WAY_OFFSET = 11;
 
         // -----------------------------------------------------
-        // Draw normal route segments.
-        // Opposite directions on the same corridor always get
-        // opposite lanes, even if node names do not match.
+        // 1. Draw route line segments.
         // -----------------------------------------------------
 
         sameFloorSegments.forEach((segment) => {
@@ -1416,12 +1373,18 @@
         });
 
         // -----------------------------------------------------
-        // IMPORTANT:
-        //
-        // Look at the LAST point on this floor.
-        //
-        // If its NEXT route point is on another floor,
-        // draw an explicit staircase transition.
+        // 2. Redraw room/stair/entrance boxes on top of the
+        //    route lines, so box edges cleanly cover line ends.
+        //    This happens BEFORE the transition text below, so
+        //    the text is never hidden underneath a box.
+        // -----------------------------------------------------
+
+        drawFloorNodes(svg);
+
+        // -----------------------------------------------------
+        // 3. Floor/building transition text is drawn LAST, so
+        //    it always renders on top and is never covered by
+        //    a room/stair/entrance box.
         // -----------------------------------------------------
 
         const lastVisible = onThisView[onThisView.length - 1];
@@ -1437,11 +1400,6 @@
             nextPoint.building === currentBuilding &&
             nextPoint.floor !== currentFloor
           ) {
-            /*
-             * We have reached the staircase
-             * on this floor.
-             */
-
             drawFloorTransition(svg, lastVisible, nextPoint.floor);
           }
 
@@ -1454,8 +1412,6 @@
             );
           }
         }
-
-        drawFloorNodes(svg);
 
         // -----------------------------------------------------
         // START MARKER
@@ -1620,10 +1576,6 @@
 
         const resultEl = document.getElementById("result");
 
-        // -----------------------------------------------------
-        // User MUST provide From
-        // -----------------------------------------------------
-
         if (!from) {
           hideCurrentLocation();
 
@@ -1635,10 +1587,6 @@
 
           return;
         }
-
-        // -----------------------------------------------------
-        // User MUST provide To
-        // -----------------------------------------------------
 
         if (!to) {
           hideCurrentLocation();
@@ -1690,25 +1638,13 @@
               return;
             }
 
-            // ------------------------------------------------
-            // DIRECTIONS
-            // ------------------------------------------------
-
             resultEl.classList.remove("placeholder");
 
             resultEl.innerText = data.directions.join("\n");
 
             showRouteOptions(data.available_modes, data.route_mode);
 
-            // ------------------------------------------------
-            // SAVE ROUTE
-            // ------------------------------------------------
-
             lastPathCoords = data.path_coords;
-
-            // ------------------------------------------------
-            // STARTING BLOCK/FLOOR
-            // ------------------------------------------------
 
             currentBuilding = lastPathCoords[0].building;
 
@@ -1716,19 +1652,11 @@
 
             updateCurrentLocation();
 
-            // ------------------------------------------------
-            // RESET MAP
-            // ------------------------------------------------
-
             const svg = document.getElementById("floorMap");
 
             svg.style.transform = "translate(0px, 0px) scale(1)";
 
             document.getElementById("navigationMessage").innerText = "";
-
-            // ------------------------------------------------
-            // LOAD STARTING BUILDING
-            // ------------------------------------------------
 
             renderBuildingTabs();
 

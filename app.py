@@ -1453,7 +1453,7 @@ def get_floor():
             for name, pos
             in nodes_on_floor.items()
 
-            ],
+        ],
 
         "edges":
             edges
