@@ -1,170 +1,147 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
-    <title>VIT Vellore - Campus Navigation</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VIT Vellore — Wayfinder</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
 
     <style>
+      /* =====================================================
+         TOKENS
+         A drafting-table palette: dark blueprint navy for
+         chrome, pale drafting paper for the floor plan itself,
+         amber for the marked route (like a highlighter on a
+         printed plan).
+         ===================================================== */
+      :root {
+        --ink: #0e1e38;
+        --ink-soft: #16305a;
+        --ink-line: #2a4a78;
+        --paper: #eef3f8;
+        --paper-line: #345272;
+        --paper-line-soft: #c9d6e5;
+        --paper-fill: #e3ebf4;
+        --route: #f2a93b;
+        --route-deep: #c9861f;
+        --destination: #e15a4c;
+        --stop: #1fa2a6;
+        --text-on-ink: #e9eefb;
+        --text-on-ink-dim: #93a6c9;
+        --text-on-paper: #1a2c47;
+        --font-ui: "Space Grotesk", system-ui, sans-serif;
+        --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
       body {
-        font-family: Arial, sans-serif;
-        margin: 20px;
-        background: #f5f5f5;
+        height: 100%;
+        margin: 0;
       }
 
-      h2 {
-        margin-bottom: 15px;
+      body {
+        display: flex;
+        flex-direction: column;
+        font-family: var(--font-ui);
+        background: var(--ink);
+        color: var(--text-on-ink);
+        overflow: hidden;
       }
 
-      /* =====================================================
-       CONTROLS
-       ===================================================== */
-
-      #controls {
-        background: white;
-
-        padding: 15px;
-
-        border: 1px solid #ddd;
-
-        margin-bottom: 15px;
-
-        width: 460px;
-      }
-
+      button,
       input {
-        padding: 7px;
-
-        width: 120px;
-
-        margin-left: 5px;
+        font-family: inherit;
       }
 
-      button {
-        padding: 8px 15px;
-
-        cursor: pointer;
+      :focus-visible {
+        outline: 2px solid var(--route);
+        outline-offset: 2px;
       }
 
       /* =====================================================
-       CURRENT LOCATION
-       ===================================================== */
+         APP SHELL
+         ===================================================== */
 
-      #currentLocation {
-        display: none;
-
-        width: 460px;
-
-        background: white;
-
-        border: 1px solid #ddd;
-
-        padding: 12px;
-
-        margin-bottom: 8px;
+      #app {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        height: 100dvh;
       }
 
-      #currentBlock {
-        font-size: 20px;
-
-        font-weight: bold;
-
-        color: #2b6cff;
+      .app-header {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 20px;
+        border-bottom: 1px solid var(--ink-line);
+        background: var(--ink);
+        z-index: 30;
       }
 
-      #currentFloor {
-        font-size: 14px;
-
-        color: #555;
-
-        margin-top: 3px;
+      .brand-mark {
+        flex: 0 0 auto;
+        width: 30px;
+        height: 30px;
       }
 
-      /* =====================================================
-       RESULT
-       ===================================================== */
-
-      #result {
-        white-space: pre-line;
-
-        background: white;
-
-        padding: 10px;
-
-        width: 460px;
-
-        border: 1px solid #ddd;
+      .brand-text h1 {
+        margin: 0;
+        font-size: 17px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
       }
 
-      #routeOptions {
-        display: none;
-
-        width: 460px;
-
-        background: white;
-
-        border: 1px solid #ddd;
-
-        padding: 10px;
-
-        margin-bottom: 8px;
+      .brand-text p {
+        margin: 1px 0 0;
+        font-size: 12px;
+        color: var(--text-on-ink-dim);
       }
 
-      #routeOptions button.active {
-        background: #2b6cff;
-
-        color: white;
-      }
-
-      #navigationMessage {
-        font-size: 13px;
-
-        color: #444;
-
-        background: white;
-
-        padding: 8px;
-
-        width: 464px;
-
-        border: 1px solid #ddd;
+      #app-content {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        position: relative;
       }
 
       /* =====================================================
-       MAP
-       ===================================================== */
+         MAP PANEL
+         ===================================================== */
+
+      .map-panel {
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
+        position: relative;
+        background: var(--paper);
+      }
 
       #mapStage {
-        position: relative;
-
-        width: 480px;
-
-        height: 400px;
-
+        position: absolute;
+        inset: 0;
         overflow: hidden;
-
-        border: 1px solid #aaa;
-
-        background: white;
       }
 
       #outdoorView {
         position: absolute;
-
-        top: 0;
-
-        left: 0;
-
-        width: 100%;
-
-        height: 100%;
-
+        inset: 0;
         background-image: url("/campus_map.png");
-
         background-size: cover;
-
         background-position: center;
-
         transform-origin: 20% 20%;
-
         transition:
           transform 1.4s ease-in,
           opacity 0.6s ease-in 1s;
@@ -172,130 +149,269 @@
 
       #outdoorView.zoomed {
         transform: scale(6);
-
         opacity: 0;
       }
 
       #indoorView {
         position: absolute;
-
-        top: 0;
-
-        left: 0;
-
-        width: 100%;
-
-        height: 100%;
-
+        inset: 0;
+        display: flex;
+        flex-direction: column;
         opacity: 0;
-
+        background: var(--paper);
         transition: opacity 0.6s ease-in;
-
-        background: white;
-
-        overflow: hidden;
       }
 
       #indoorView.visible {
         opacity: 1;
       }
 
-      /* =====================================================
-       TABS
-       ===================================================== */
+      .map-toolbar {
+        flex: 0 0 auto;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 6px;
+        padding: 12px 14px 10px;
+        background: var(--paper);
+        border-bottom: 1px solid var(--paper-line-soft);
+      }
 
-      #buildingTabs,
-      #floorTabs {
-        position: relative;
-
-        z-index: 20;
-
-        background: white;
-
-        padding: 5px;
-
-        white-space: nowrap;
+      .tab-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
       }
 
       .tab {
-        display: inline-block;
-
-        padding: 7px 12px;
-
-        margin-right: 5px;
-
-        border: 1px solid #888;
-
-        background: #eee;
-
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 13px;
+        border-radius: 7px;
+        border: 1px solid var(--paper-line-soft);
+        background: #fff;
+        color: var(--text-on-paper);
         cursor: pointer;
+        font-size: 12.5px;
+        font-weight: 500;
+        letter-spacing: 0.01em;
+        transition:
+          background 0.15s ease,
+          color 0.15s ease,
+          border-color 0.15s ease;
+      }
 
-        font-size: 13px;
+      .tab:hover {
+        border-color: var(--route);
       }
 
       .tab.active {
-        background: #2b6cff;
-
-        color: white;
-
-        border-color: #2b6cff;
+        background: var(--ink);
+        color: var(--text-on-ink);
+        border-color: var(--ink);
       }
 
-      /* =====================================================
-       SVG
-       ===================================================== */
+      .map-canvas {
+        flex: 1;
+        min-height: 0;
+        position: relative;
+        background-image:
+          linear-gradient(var(--paper-line-soft) 1px, transparent 1px),
+          linear-gradient(90deg, var(--paper-line-soft) 1px, transparent 1px);
+        background-size: 24px 24px;
+        background-position: center;
+      }
 
       #floorMap {
-        position: absolute;
-
-        left: 0;
-
-        top: 65px;
-
-        transform-origin: center center;
-
-        transition: transform 1.2s ease-in-out;
+        display: block;
+        width: 100%;
+        height: 100%;
       }
 
       /* =====================================================
-       ROOM SQUARE
-       ===================================================== */
+         SIDEBAR / CARDS
+         ===================================================== */
+
+      .sidebar {
+        flex: 0 0 380px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 16px;
+        overflow-y: auto;
+        background: var(--ink);
+        border-left: 1px solid var(--ink-line);
+      }
+
+      .card {
+        background: var(--ink-soft);
+        border: 1px solid var(--ink-line);
+        border-radius: 10px;
+        padding: 14px 16px;
+      }
+
+      .card h2 {
+        margin: 0 0 12px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        color: var(--text-on-ink-dim);
+        text-transform: uppercase;
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        margin-bottom: 12px;
+      }
+
+      .field:last-of-type {
+        margin-bottom: 14px;
+      }
+
+      .field label {
+        font-size: 12.5px;
+        color: var(--text-on-ink-dim);
+      }
+
+      .field input {
+        padding: 9px 10px;
+        border-radius: 7px;
+        border: 1px solid var(--ink-line);
+        background: #0b1830;
+        color: var(--text-on-ink);
+        font-size: 14px;
+      }
+
+      .field input::placeholder {
+        color: #5a6f95;
+      }
+
+      .field input:focus {
+        border-color: var(--route);
+      }
+
+      #findPathBtn {
+        width: 100%;
+        padding: 10px 14px;
+        border: none;
+        border-radius: 7px;
+        background: var(--route);
+        color: #26190a;
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+        transition: background 0.15s ease;
+      }
+
+      #findPathBtn:hover {
+        background: var(--route-deep);
+      }
+
+      /* -----------------------------------------------------
+         CURRENT LOCATION
+         ----------------------------------------------------- */
+
+      #currentLocation {
+        display: none;
+      }
+
+      #currentBlock {
+        font-family: var(--font-mono);
+        font-size: 19px;
+        font-weight: 600;
+        color: var(--route);
+      }
+
+      #currentFloor {
+        font-family: var(--font-mono);
+        font-size: 13px;
+        color: var(--text-on-ink-dim);
+        margin-top: 4px;
+      }
+
+      /* -----------------------------------------------------
+         DIRECTIONS / ROUTE OPTIONS
+         ----------------------------------------------------- */
+
+      #routeOptions {
+        display: none;
+        margin-bottom: 12px;
+        font-size: 12.5px;
+      }
+
+      #routeOptions strong {
+        display: block;
+        font-weight: 600;
+        color: var(--text-on-ink-dim);
+        margin-bottom: 6px;
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      #routeOptions button {
+        padding: 6px 12px;
+        margin: 0 6px 6px 0;
+        border-radius: 6px;
+        border: 1px solid var(--ink-line);
+        background: #0b1830;
+        color: var(--text-on-ink);
+        font-size: 12.5px;
+        cursor: pointer;
+      }
+
+      #routeOptions button.active {
+        background: var(--route);
+        border-color: var(--route);
+        color: #26190a;
+        font-weight: 600;
+      }
+
+      #result {
+        margin: 0;
+        white-space: pre-line;
+        font-size: 13.5px;
+        line-height: 1.65;
+        color: var(--text-on-ink);
+      }
+
+      #result:empty::before,
+      #result.placeholder::before {
+        content: "Enter a starting room and a destination to get turn-by-turn directions.";
+        color: var(--text-on-ink-dim);
+      }
+
+      #navigationMessage {
+        margin: 10px 0 0;
+        font-size: 12.5px;
+        color: var(--stop);
+        min-height: 1em;
+      }
+
+      /* =====================================================
+         SVG CONTENT (drawn by JS, classes styled here)
+         ===================================================== */
 
       .room-square {
         cursor: pointer;
+        transition: fill 0.1s ease;
       }
 
       .room-square:hover {
-        fill: #dce8ff;
-
-        stroke: #2b6cff;
-
-        stroke-width: 2;
+        fill: #fde8c2 !important;
+        stroke: var(--route) !important;
       }
-
-      /* =====================================================
-       ROUTE
-       ===================================================== */
 
       .route-line {
         cursor: pointer;
-
         pointer-events: stroke;
-
-        /*
-       * Square ends.
-       */
-
         stroke-linecap: square;
       }
 
       .route-line:hover {
         stroke-width: 5;
       }
-
-      /* =====================================================
-       FLOOR TRANSITION
-       ===================================================== */
 
       .floor-transition {
         cursor: pointer;
@@ -306,26 +422,18 @@
       }
 
       .floor-transition-line {
-        stroke: #2b6cff;
-
+        stroke: var(--route);
         stroke-width: 3;
-
         stroke-linecap: square;
       }
 
       .floor-transition-text {
+        font-family: var(--font-mono);
         font-size: 11px;
-
-        font-weight: bold;
-
-        fill: #2b6cff;
-
+        font-weight: 600;
+        fill: var(--route-deep);
         text-anchor: middle;
       }
-
-      /* =====================================================
-       DESTINATION
-       ===================================================== */
 
       .destination-pulse {
         animation: destinationPulse 1.2s infinite;
@@ -334,96 +442,167 @@
       @keyframes destinationPulse {
         0% {
           r: 9;
-
           opacity: 1;
         }
-
         50% {
           r: 15;
-
           opacity: 0.45;
         }
-
         100% {
           r: 9;
-
           opacity: 1;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #outdoorView,
+        #indoorView {
+          transition: none !important;
+        }
+        .destination-pulse {
+          animation: none;
+        }
+      }
+
+      /* =====================================================
+         RESPONSIVE: below ~880px the sidebar becomes a
+         bottom sheet floating over a full-bleed map, matching
+         the conventions of a mobile navigation app.
+         ===================================================== */
+
+      @media (max-width: 880px) {
+        .app-header {
+          padding: 12px 16px;
+        }
+
+        #app-content {
+          display: block;
+        }
+
+        .map-panel {
+          position: absolute;
+          inset: 0;
+        }
+
+        .sidebar {
+          position: absolute;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          flex: none;
+          max-height: 62dvh;
+          border-left: none;
+          border-top: 1px solid var(--ink-line);
+          border-radius: 16px 16px 0 0;
+          box-shadow: 0 -8px 24px rgba(4, 10, 24, 0.45);
+        }
+
+        .sidebar::before {
+          content: "";
+          display: block;
+          width: 36px;
+          height: 4px;
+          border-radius: 2px;
+          background: var(--ink-line);
+          margin: 2px auto 10px;
+        }
+      }
+
+      @media (min-width: 881px) {
+        .sidebar {
+          height: 100%;
         }
       }
     </style>
   </head>
 
   <body>
-    <h2>VIT Vellore - Campus Navigation</h2>
+    <div id="app">
+      <!-- ===================================================
+           HEADER
+           =================================================== -->
 
-    <!-- =====================================================
-       SEARCH
-       ===================================================== -->
+      <header class="app-header">
+        <svg
+          class="brand-mark"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          <path
+            d="M16 2 L28 9 V23 L16 30 L4 23 V9 Z"
+            stroke="#f2a93b"
+            stroke-width="2"
+          />
+          <circle cx="16" cy="16" r="3" fill="#f2a93b" />
+        </svg>
+        <div class="brand-text">
+          <h1>VIT Vellore</h1>
+          <p>Campus wayfinder</p>
+        </div>
+      </header>
 
-    <div id="controls">
-      <label>
-        From:
+      <!-- ===================================================
+           CONTENT
+           =================================================== -->
 
-        <input id="from" placeholder="e.g. 43" />
-      </label>
+      <div id="app-content">
+        <div class="map-panel">
+          <div id="mapStage">
+            <div id="outdoorView"></div>
 
-      <br />
-      <br />
+            <div id="indoorView">
+              <div class="map-toolbar">
+                <div id="buildingTabs" class="tab-row"></div>
+                <div id="floorTabs" class="tab-row"></div>
+              </div>
 
-      <label>
-        Stop:
+              <div class="map-canvas">
+                <svg
+                  id="floorMap"
+                  viewBox="0 0 480 340"
+                  preserveAspectRatio="xMidYMid meet"
+                ></svg>
+              </div>
+            </div>
+          </div>
+        </div>
 
-        <input id="via" placeholder="Optional" />
-      </label>
+        <aside class="sidebar">
+          <div class="card">
+            <h2>Plan a route</h2>
 
-      <br />
-      <br />
+            <div class="field">
+              <label for="from">From</label>
+              <input id="from" placeholder="e.g. 43" />
+            </div>
 
-      <label>
-        To:
+            <div class="field">
+              <label for="via">Stop (optional)</label>
+              <input id="via" placeholder="e.g. 118" />
+            </div>
 
-        <input id="to" placeholder="e.g. 101" />
-      </label>
+            <div class="field">
+              <label for="to">To</label>
+              <input id="to" placeholder="e.g. 101" />
+            </div>
 
-      <br />
-      <br />
+            <button id="findPathBtn" onclick="findPath()">Find route</button>
+          </div>
 
-      <button onclick="findPath()">Find Path</button>
-    </div>
+          <div class="card" id="currentLocation">
+            <h2>Current location</h2>
+            <div id="currentBlock">Current Block:</div>
+            <div id="currentFloor">Current Floor:</div>
+          </div>
 
-    <!-- =====================================================
-       CURRENT LOCATION
-       ===================================================== -->
-
-    <div id="currentLocation">
-      <div id="currentBlock">Current Block:</div>
-
-      <div id="currentFloor">Current Floor:</div>
-    </div>
-
-    <!-- =====================================================
-       DIRECTIONS
-       ===================================================== -->
-
-    <p id="result"></p>
-
-    <div id="routeOptions"></div>
-
-    <p id="navigationMessage"></p>
-
-    <!-- =====================================================
-       MAP
-       ===================================================== -->
-
-    <div id="mapStage">
-      <div id="outdoorView"></div>
-
-      <div id="indoorView">
-        <div id="buildingTabs"></div>
-
-        <div id="floorTabs"></div>
-
-        <svg id="floorMap" viewBox="0 0 480 340" width="480" height="340"></svg>
+          <div class="card">
+            <h2>Directions</h2>
+            <div id="routeOptions"></div>
+            <p id="result"></p>
+            <p id="navigationMessage"></p>
+          </div>
+        </aside>
       </div>
     </div>
 
@@ -688,7 +867,7 @@
 
           line.setAttribute("y2", b.y);
 
-          line.setAttribute("stroke", "#d0d0d0");
+          line.setAttribute("stroke", "#c9d6e5");
 
           line.setAttribute("stroke-width", "4");
 
@@ -722,13 +901,13 @@
 
             square.setAttribute("height", "24");
 
-            square.setAttribute("rx", "2");
+            square.setAttribute("rx", "3");
 
-            square.setAttribute("fill", "#eeeeee");
+            square.setAttribute("fill", "#e3ebf4");
 
-            square.setAttribute("stroke", "#777777");
+            square.setAttribute("stroke", "#345272");
 
-            square.setAttribute("stroke-width", "1");
+            square.setAttribute("stroke-width", "1.25");
 
             square.classList.add("room-square");
 
@@ -746,11 +925,13 @@
 
             label.setAttribute("text-anchor", "middle");
 
-            label.setAttribute("font-size", "11");
+            label.setAttribute("font-family", "IBM Plex Mono, monospace");
 
-            label.setAttribute("font-weight", "bold");
+            label.setAttribute("font-size", "10.5");
 
-            label.setAttribute("fill", "#222");
+            label.setAttribute("font-weight", "600");
+
+            label.setAttribute("fill", "#1a2c47");
 
             label.textContent = pos.room_number;
 
@@ -771,11 +952,13 @@
 
             stair.setAttribute("height", "28");
 
-            stair.setAttribute("fill", "#fff3cd");
+            stair.setAttribute("rx", "3");
 
-            stair.setAttribute("stroke", "#996c00");
+            stair.setAttribute("fill", "#f6e7c4");
 
-            stair.setAttribute("stroke-width", "2");
+            stair.setAttribute("stroke", "#8c6d1f");
+
+            stair.setAttribute("stroke-width", "1.5");
 
             svg.appendChild(stair);
 
@@ -787,9 +970,13 @@
 
             label.setAttribute("text-anchor", "middle");
 
-            label.setAttribute("font-size", "9");
+            label.setAttribute("font-family", "IBM Plex Mono, monospace");
 
-            label.setAttribute("font-weight", "bold");
+            label.setAttribute("font-size", "8.5");
+
+            label.setAttribute("font-weight", "600");
+
+            label.setAttribute("fill", "#5b4712");
 
             label.textContent = "STAIRS";
 
@@ -810,9 +997,13 @@
 
             entrance.setAttribute("height", "24");
 
-            entrance.setAttribute("fill", "#d9ead3");
+            entrance.setAttribute("rx", "3");
 
-            entrance.setAttribute("stroke", "#38761d");
+            entrance.setAttribute("fill", "#dceee0");
+
+            entrance.setAttribute("stroke", "#2f7a4d");
+
+            entrance.setAttribute("stroke-width", "1.5");
 
             svg.appendChild(entrance);
 
@@ -822,7 +1013,11 @@
 
             label.setAttribute("y", pos.y + 4);
 
+            label.setAttribute("font-family", "Space Grotesk, sans-serif");
+
             label.setAttribute("font-size", "10");
+
+            label.setAttribute("fill", "#1a2c47");
 
             label.textContent = "Entrance";
 
@@ -866,7 +1061,7 @@
 
         arrow.setAttribute("d", "M0,1.5 L10,5 L0,8.5 Z");
 
-        arrow.setAttribute("fill", "#2b6cff");
+        arrow.setAttribute("fill", "#f2a93b");
 
         marker.appendChild(arrow);
 
@@ -1203,7 +1398,7 @@
 
           line.setAttribute("y2", endY);
 
-          line.setAttribute("stroke", "#2b6cff");
+          line.setAttribute("stroke", "#f2a93b");
 
           line.setAttribute("stroke-width", "2.5");
 
@@ -1280,7 +1475,11 @@
 
           startDot.setAttribute("r", "9");
 
-          startDot.setAttribute("fill", "#2b6cff");
+          startDot.setAttribute("fill", "#f2a93b");
+
+          startDot.setAttribute("stroke", "#fff");
+
+          startDot.setAttribute("stroke-width", "2");
 
           svg.appendChild(startDot);
         }
@@ -1300,7 +1499,7 @@
 
             stopDot.setAttribute("r", "8");
 
-            stopDot.setAttribute("fill", "#ff9500");
+            stopDot.setAttribute("fill", "#1fa2a6");
 
             stopDot.setAttribute("stroke", "white");
 
@@ -1329,7 +1528,11 @@
 
           endDot.setAttribute("r", "9");
 
-          endDot.setAttribute("fill", "#ff3b30");
+          endDot.setAttribute("fill", "#e15a4c");
+
+          endDot.setAttribute("stroke", "#fff");
+
+          endDot.setAttribute("stroke-width", "2");
 
           endDot.classList.add("destination-pulse");
 
@@ -1342,10 +1545,8 @@
       // =========================================================
 
       function showDestination() {
-        const destination = lastPathCoords[lastPathCoords.length - 1];
-
         document.getElementById("navigationMessage").innerText =
-          "Continue following the blue arrows toward the red destination.";
+          "Continue following the amber arrows toward the red destination.";
       }
 
       // =========================================================
@@ -1380,7 +1581,7 @@
           return;
         }
 
-        container.innerHTML = "<strong>Choose your route:</strong> ";
+        container.innerHTML = "<strong>Choose your route</strong>";
 
         const labels = {
           indoor: "Indoor / covered",
@@ -1417,6 +1618,8 @@
 
         const to = document.getElementById("to").value.trim();
 
+        const resultEl = document.getElementById("result");
+
         // -----------------------------------------------------
         // User MUST provide From
         // -----------------------------------------------------
@@ -1426,8 +1629,9 @@
 
           hideRouteOptions();
 
-          document.getElementById("result").innerText =
-            "Please enter your starting room number.";
+          resultEl.classList.remove("placeholder");
+
+          resultEl.innerText = "Please enter your starting room number.";
 
           return;
         }
@@ -1441,8 +1645,9 @@
 
           hideRouteOptions();
 
-          document.getElementById("result").innerText =
-            "Please enter your destination room number.";
+          resultEl.classList.remove("placeholder");
+
+          resultEl.innerText = "Please enter your destination room number.";
 
           return;
         }
@@ -1464,8 +1669,9 @@
 
               hideRouteOptions();
 
-              document.getElementById("result").innerText =
-                "Error: " + data.error;
+              resultEl.classList.remove("placeholder");
+
+              resultEl.innerText = "Error: " + data.error;
 
               resetZoomTransition();
 
@@ -1477,8 +1683,9 @@
 
               hideRouteOptions();
 
-              document.getElementById("result").innerText =
-                "No navigation route was returned.";
+              resultEl.classList.remove("placeholder");
+
+              resultEl.innerText = "No navigation route was returned.";
 
               return;
             }
@@ -1487,8 +1694,9 @@
             // DIRECTIONS
             // ------------------------------------------------
 
-            document.getElementById("result").innerText =
-              data.directions.join("\n");
+            resultEl.classList.remove("placeholder");
+
+            resultEl.innerText = data.directions.join("\n");
 
             showRouteOptions(data.available_modes, data.route_mode);
 
@@ -1536,8 +1744,9 @@
 
             hideCurrentLocation();
 
-            document.getElementById("result").innerText =
-              "Could not reach server. Is app.py running?";
+            resultEl.classList.remove("placeholder");
+
+            resultEl.innerText = "Could not reach server. Is app.py running?";
           });
       }
 
@@ -1546,6 +1755,8 @@
       // =========================================================
 
       hideCurrentLocation();
+
+      document.getElementById("result").classList.add("placeholder");
 
       loadBuildings();
     </script>
