@@ -1,0 +1,1553 @@
+<!doctype html>
+<html>
+  <head>
+    <title>VIT Vellore - Campus Navigation</title>
+
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+        background: #f5f5f5;
+      }
+
+      h2 {
+        margin-bottom: 15px;
+      }
+
+      /* =====================================================
+       CONTROLS
+       ===================================================== */
+
+      #controls {
+        background: white;
+
+        padding: 15px;
+
+        border: 1px solid #ddd;
+
+        margin-bottom: 15px;
+
+        width: 460px;
+      }
+
+      input {
+        padding: 7px;
+
+        width: 120px;
+
+        margin-left: 5px;
+      }
+
+      button {
+        padding: 8px 15px;
+
+        cursor: pointer;
+      }
+
+      /* =====================================================
+       CURRENT LOCATION
+       ===================================================== */
+
+      #currentLocation {
+        display: none;
+
+        width: 460px;
+
+        background: white;
+
+        border: 1px solid #ddd;
+
+        padding: 12px;
+
+        margin-bottom: 8px;
+      }
+
+      #currentBlock {
+        font-size: 20px;
+
+        font-weight: bold;
+
+        color: #2b6cff;
+      }
+
+      #currentFloor {
+        font-size: 14px;
+
+        color: #555;
+
+        margin-top: 3px;
+      }
+
+      /* =====================================================
+       RESULT
+       ===================================================== */
+
+      #result {
+        white-space: pre-line;
+
+        background: white;
+
+        padding: 10px;
+
+        width: 460px;
+
+        border: 1px solid #ddd;
+      }
+
+      #routeOptions {
+        display: none;
+
+        width: 460px;
+
+        background: white;
+
+        border: 1px solid #ddd;
+
+        padding: 10px;
+
+        margin-bottom: 8px;
+      }
+
+      #routeOptions button.active {
+        background: #2b6cff;
+
+        color: white;
+      }
+
+      #navigationMessage {
+        font-size: 13px;
+
+        color: #444;
+
+        background: white;
+
+        padding: 8px;
+
+        width: 464px;
+
+        border: 1px solid #ddd;
+      }
+
+      /* =====================================================
+       MAP
+       ===================================================== */
+
+      #mapStage {
+        position: relative;
+
+        width: 480px;
+
+        height: 400px;
+
+        overflow: hidden;
+
+        border: 1px solid #aaa;
+
+        background: white;
+      }
+
+      #outdoorView {
+        position: absolute;
+
+        top: 0;
+
+        left: 0;
+
+        width: 100%;
+
+        height: 100%;
+
+        background-image: url("/campus_map.png");
+
+        background-size: cover;
+
+        background-position: center;
+
+        transform-origin: 20% 20%;
+
+        transition:
+          transform 1.4s ease-in,
+          opacity 0.6s ease-in 1s;
+      }
+
+      #outdoorView.zoomed {
+        transform: scale(6);
+
+        opacity: 0;
+      }
+
+      #indoorView {
+        position: absolute;
+
+        top: 0;
+
+        left: 0;
+
+        width: 100%;
+
+        height: 100%;
+
+        opacity: 0;
+
+        transition: opacity 0.6s ease-in;
+
+        background: white;
+
+        overflow: hidden;
+      }
+
+      #indoorView.visible {
+        opacity: 1;
+      }
+
+      /* =====================================================
+       TABS
+       ===================================================== */
+
+      #buildingTabs,
+      #floorTabs {
+        position: relative;
+
+        z-index: 20;
+
+        background: white;
+
+        padding: 5px;
+
+        white-space: nowrap;
+      }
+
+      .tab {
+        display: inline-block;
+
+        padding: 7px 12px;
+
+        margin-right: 5px;
+
+        border: 1px solid #888;
+
+        background: #eee;
+
+        cursor: pointer;
+
+        font-size: 13px;
+      }
+
+      .tab.active {
+        background: #2b6cff;
+
+        color: white;
+
+        border-color: #2b6cff;
+      }
+
+      /* =====================================================
+       SVG
+       ===================================================== */
+
+      #floorMap {
+        position: absolute;
+
+        left: 0;
+
+        top: 65px;
+
+        transform-origin: center center;
+
+        transition: transform 1.2s ease-in-out;
+      }
+
+      /* =====================================================
+       ROOM SQUARE
+       ===================================================== */
+
+      .room-square {
+        cursor: pointer;
+      }
+
+      .room-square:hover {
+        fill: #dce8ff;
+
+        stroke: #2b6cff;
+
+        stroke-width: 2;
+      }
+
+      /* =====================================================
+       ROUTE
+       ===================================================== */
+
+      .route-line {
+        cursor: pointer;
+
+        pointer-events: stroke;
+
+        /*
+       * Square ends.
+       */
+
+        stroke-linecap: square;
+      }
+
+      .route-line:hover {
+        stroke-width: 5;
+      }
+
+      /* =====================================================
+       FLOOR TRANSITION
+       ===================================================== */
+
+      .floor-transition {
+        cursor: pointer;
+      }
+
+      .floor-transition:hover {
+        opacity: 0.75;
+      }
+
+      .floor-transition-line {
+        stroke: #2b6cff;
+
+        stroke-width: 3;
+
+        stroke-linecap: square;
+      }
+
+      .floor-transition-text {
+        font-size: 11px;
+
+        font-weight: bold;
+
+        fill: #2b6cff;
+
+        text-anchor: middle;
+      }
+
+      /* =====================================================
+       DESTINATION
+       ===================================================== */
+
+      .destination-pulse {
+        animation: destinationPulse 1.2s infinite;
+      }
+
+      @keyframes destinationPulse {
+        0% {
+          r: 9;
+
+          opacity: 1;
+        }
+
+        50% {
+          r: 15;
+
+          opacity: 0.45;
+        }
+
+        100% {
+          r: 9;
+
+          opacity: 1;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <h2>VIT Vellore - Campus Navigation</h2>
+
+    <!-- =====================================================
+       SEARCH
+       ===================================================== -->
+
+    <div id="controls">
+      <label>
+        From:
+
+        <input id="from" placeholder="e.g. 43" />
+      </label>
+
+      <br />
+      <br />
+
+      <label>
+        Stop:
+
+        <input id="via" placeholder="Optional" />
+      </label>
+
+      <br />
+      <br />
+
+      <label>
+        To:
+
+        <input id="to" placeholder="e.g. 101" />
+      </label>
+
+      <br />
+      <br />
+
+      <button onclick="findPath()">Find Path</button>
+    </div>
+
+    <!-- =====================================================
+       CURRENT LOCATION
+       ===================================================== -->
+
+    <div id="currentLocation">
+      <div id="currentBlock">Current Block:</div>
+
+      <div id="currentFloor">Current Floor:</div>
+    </div>
+
+    <!-- =====================================================
+       DIRECTIONS
+       ===================================================== -->
+
+    <p id="result"></p>
+
+    <div id="routeOptions"></div>
+
+    <p id="navigationMessage"></p>
+
+    <!-- =====================================================
+       MAP
+       ===================================================== -->
+
+    <div id="mapStage">
+      <div id="outdoorView"></div>
+
+      <div id="indoorView">
+        <div id="buildingTabs"></div>
+
+        <div id="floorTabs"></div>
+
+        <svg id="floorMap" viewBox="0 0 480 340" width="480" height="340"></svg>
+      </div>
+    </div>
+
+    <script>
+      const svgns = "http://www.w3.org/2000/svg";
+
+      let floorNodes = {};
+
+      let floorEdges = [];
+
+      let currentBuilding = null;
+
+      let currentFloor = null;
+
+      let lastPathCoords = [];
+
+      let buildingLayout = {};
+
+      let selectedRouteMode = "indoor";
+
+      const buildingLabels = {
+        A: "A Block",
+
+        B: "B Block",
+
+        C: "C Block",
+
+        D: "D Block",
+
+        E: "E Block",
+      };
+
+      // =========================================================
+      // FLOOR NAME
+      // =========================================================
+
+      function getFloorName(floor) {
+        if (floor === 0) {
+          return "Ground Floor";
+        }
+
+        if (floor === 1) {
+          return "1st Floor";
+        }
+
+        if (floor === 2) {
+          return "2nd Floor";
+        }
+
+        if (floor === 3) {
+          return "3rd Floor";
+        }
+
+        return floor + "th Floor";
+      }
+
+      // =========================================================
+      // CURRENT LOCATION
+      // =========================================================
+
+      function updateCurrentLocation() {
+        if (!currentBuilding || currentFloor === null) {
+          document.getElementById("currentLocation").style.display = "none";
+
+          return;
+        }
+
+        document.getElementById("currentBlock").innerText =
+          "Current Block: " +
+          (buildingLabels[currentBuilding] || currentBuilding);
+
+        document.getElementById("currentFloor").innerText =
+          "Current Floor: " + getFloorName(currentFloor);
+
+        document.getElementById("currentLocation").style.display = "block";
+      }
+
+      // =========================================================
+      // HIDE LOCATION
+      // =========================================================
+
+      function hideCurrentLocation() {
+        document.getElementById("currentLocation").style.display = "none";
+      }
+
+      // =========================================================
+      // LOAD BUILDINGS
+      // =========================================================
+
+      function loadBuildings() {
+        fetch("/buildings")
+          .then((response) => response.json())
+
+          .then((data) => {
+            buildingLayout = data;
+
+            currentBuilding = null;
+
+            currentFloor = null;
+
+            hideCurrentLocation();
+
+            document.getElementById("buildingTabs").innerHTML = "";
+
+            document.getElementById("floorTabs").innerHTML = "";
+          });
+      }
+
+      // =========================================================
+      // BUILDING TABS
+      // =========================================================
+
+      function renderBuildingTabs() {
+        const container = document.getElementById("buildingTabs");
+
+        container.innerHTML = "";
+
+        if (!currentBuilding) {
+          return;
+        }
+
+        Object.keys(buildingLayout).forEach((buildingId) => {
+          const tab = document.createElement("span");
+
+          tab.className =
+            "tab" + (buildingId === currentBuilding ? " active" : "");
+
+          tab.textContent = buildingLabels[buildingId];
+
+          tab.onclick = () => {
+            currentBuilding = buildingId;
+
+            currentFloor = buildingLayout[buildingId][0];
+
+            updateCurrentLocation();
+
+            renderBuildingTabs();
+
+            renderFloorTabs();
+
+            loadFloor();
+          };
+
+          container.appendChild(tab);
+        });
+      }
+
+      // =========================================================
+      // FLOOR TABS
+      // =========================================================
+
+      function renderFloorTabs() {
+        const container = document.getElementById("floorTabs");
+
+        container.innerHTML = "";
+
+        if (!currentBuilding) {
+          return;
+        }
+
+        const floors = buildingLayout[currentBuilding] || [];
+
+        floors.forEach((floorNum) => {
+          const tab = document.createElement("span");
+
+          tab.className = "tab" + (floorNum === currentFloor ? " active" : "");
+
+          tab.textContent = getFloorName(floorNum);
+
+          tab.onclick = () => {
+            currentFloor = floorNum;
+
+            updateCurrentLocation();
+
+            renderFloorTabs();
+
+            loadFloor();
+          };
+
+          container.appendChild(tab);
+        });
+      }
+
+      // =========================================================
+      // LOAD FLOOR
+      // =========================================================
+
+      function loadFloor() {
+        if (!currentBuilding || currentFloor === null) {
+          return;
+        }
+
+        fetch(
+          `/floor?building=${encodeURIComponent(
+            currentBuilding,
+          )}&floor=${currentFloor}`,
+        )
+          .then((response) => response.json())
+
+          .then((data) => {
+            if (data.error) {
+              console.error(data.error);
+
+              return;
+            }
+
+            floorNodes = {};
+
+            data.nodes.forEach((node) => {
+              floorNodes[node.name] = {
+                x: node.x,
+
+                y: node.y,
+
+                type: node.type,
+
+                room_number: node.room_number,
+              };
+            });
+
+            floorEdges = data.edges;
+
+            drawBaseMap();
+
+            if (lastPathCoords.length > 0) {
+              highlightPathOnCurrentView();
+            }
+          });
+      }
+
+      // =========================================================
+      // DRAW BASE MAP
+      // =========================================================
+
+      function drawBaseMap() {
+        const svg = document.getElementById("floorMap");
+
+        svg.innerHTML = "";
+
+        svg.style.transform = "translate(0px, 0px) scale(1)";
+
+        // -----------------------------------------------------
+        // CORRIDORS
+        // -----------------------------------------------------
+
+        floorEdges.forEach((edge) => {
+          const a = floorNodes[edge.from];
+
+          const b = floorNodes[edge.to];
+
+          if (!a || !b) {
+            return;
+          }
+
+          const line = document.createElementNS(svgns, "line");
+
+          line.setAttribute("x1", a.x);
+
+          line.setAttribute("y1", a.y);
+
+          line.setAttribute("x2", b.x);
+
+          line.setAttribute("y2", b.y);
+
+          line.setAttribute("stroke", "#d0d0d0");
+
+          line.setAttribute("stroke-width", "4");
+
+          line.setAttribute("stroke-linecap", "square");
+
+          svg.appendChild(line);
+        });
+
+        drawFloorNodes(svg);
+      }
+
+      // =========================================================
+      // DRAW ROOM / STAIR / ENTRANCE NODES
+      // Drawn again after the route so boxes cover line ends.
+      // =========================================================
+
+      function drawFloorNodes(svg) {
+        Object.entries(floorNodes).forEach(([name, pos]) => {
+          // ===============================================
+          // ROOM
+          // ===============================================
+
+          if (pos.type === "room") {
+            const square = document.createElementNS(svgns, "rect");
+
+            square.setAttribute("x", pos.x - 12);
+
+            square.setAttribute("y", pos.y - 12);
+
+            square.setAttribute("width", "24");
+
+            square.setAttribute("height", "24");
+
+            square.setAttribute("rx", "2");
+
+            square.setAttribute("fill", "#eeeeee");
+
+            square.setAttribute("stroke", "#777777");
+
+            square.setAttribute("stroke-width", "1");
+
+            square.classList.add("room-square");
+
+            svg.appendChild(square);
+
+            // -------------------------------------------
+            // ROOM NUMBER ABOVE SQUARE
+            // -------------------------------------------
+
+            const label = document.createElementNS(svgns, "text");
+
+            label.setAttribute("x", pos.x);
+
+            label.setAttribute("y", pos.y - 18);
+
+            label.setAttribute("text-anchor", "middle");
+
+            label.setAttribute("font-size", "11");
+
+            label.setAttribute("font-weight", "bold");
+
+            label.setAttribute("fill", "#222");
+
+            label.textContent = pos.room_number;
+
+            svg.appendChild(label);
+          }
+
+          // ===============================================
+          // STAIRCASE
+          // ===============================================
+          else if (pos.type === "stairs") {
+            const stair = document.createElementNS(svgns, "rect");
+
+            stair.setAttribute("x", pos.x - 14);
+
+            stair.setAttribute("y", pos.y - 14);
+
+            stair.setAttribute("width", "28");
+
+            stair.setAttribute("height", "28");
+
+            stair.setAttribute("fill", "#fff3cd");
+
+            stair.setAttribute("stroke", "#996c00");
+
+            stair.setAttribute("stroke-width", "2");
+
+            svg.appendChild(stair);
+
+            const label = document.createElementNS(svgns, "text");
+
+            label.setAttribute("x", pos.x);
+
+            label.setAttribute("y", pos.y + 30);
+
+            label.setAttribute("text-anchor", "middle");
+
+            label.setAttribute("font-size", "9");
+
+            label.setAttribute("font-weight", "bold");
+
+            label.textContent = "STAIRS";
+
+            svg.appendChild(label);
+          }
+
+          // ===============================================
+          // ENTRANCE
+          // ===============================================
+          else if (pos.type === "entrance") {
+            const entrance = document.createElementNS(svgns, "rect");
+
+            entrance.setAttribute("x", pos.x - 12);
+
+            entrance.setAttribute("y", pos.y - 12);
+
+            entrance.setAttribute("width", "24");
+
+            entrance.setAttribute("height", "24");
+
+            entrance.setAttribute("fill", "#d9ead3");
+
+            entrance.setAttribute("stroke", "#38761d");
+
+            svg.appendChild(entrance);
+
+            const label = document.createElementNS(svgns, "text");
+
+            label.setAttribute("x", pos.x + 25);
+
+            label.setAttribute("y", pos.y + 4);
+
+            label.setAttribute("font-size", "10");
+
+            label.textContent = "Entrance";
+
+            svg.appendChild(label);
+          }
+        });
+      }
+
+      // =========================================================
+      // ARROW MARKER
+      // =========================================================
+
+      function createRouteArrowMarker(svg) {
+        if (svg.querySelector("#routeArrow")) {
+          return;
+        }
+
+        const defs = document.createElementNS(svgns, "defs");
+
+        const marker = document.createElementNS(svgns, "marker");
+
+        marker.setAttribute("id", "routeArrow");
+
+        // userSpaceOnUse keeps the head a fixed size so short
+        // corridors like 106-101 do not get giant stacked heads.
+        marker.setAttribute("markerWidth", "10");
+
+        marker.setAttribute("markerHeight", "10");
+
+        marker.setAttribute("refX", "10");
+
+        marker.setAttribute("refY", "5");
+
+        marker.setAttribute("viewBox", "0 0 10 10");
+
+        marker.setAttribute("orient", "auto");
+
+        marker.setAttribute("markerUnits", "userSpaceOnUse");
+
+        const arrow = document.createElementNS(svgns, "path");
+
+        arrow.setAttribute("d", "M0,1.5 L10,5 L0,8.5 Z");
+
+        arrow.setAttribute("fill", "#2b6cff");
+
+        marker.appendChild(arrow);
+
+        defs.appendChild(marker);
+
+        svg.appendChild(defs);
+      }
+
+      function pointKey(point) {
+        if (point && point.name) {
+          return String(point.name);
+        }
+
+        return Math.round(point.x) + "," + Math.round(point.y);
+      }
+
+      function corridorKey(a, b) {
+        const left = pointKey(a);
+
+        const right = pointKey(b);
+
+        return left < right ? left + "::" + right : right + "::" + left;
+      }
+
+      function isCanonicalDirection(from, to) {
+        const dx = to.x - from.x;
+
+        const dy = to.y - from.y;
+
+        if (Math.abs(dx) >= Math.abs(dy)) {
+          return dx > 0 || (dx === 0 && dy >= 0);
+        }
+
+        return dy > 0;
+      }
+
+      // =========================================================
+      // DRAW FLOOR TRANSITION
+      //
+      // This is the important fix.
+      //
+      // If the route reaches the staircase and the next route
+      // node is on another floor, we DON'T draw an arrow
+      // directly to the destination.
+      //
+      // Instead we show:
+      //
+      //       STAIRS
+      //          |
+      //          ↑
+      //       Floor 2
+      //
+      // This tells the user exactly where to go.
+      // =========================================================
+
+      function drawFloorTransition(svg, point, nextFloor) {
+        const direction = nextFloor > currentFloor ? 1 : -1;
+
+        const arrowLength = 45;
+
+        const x = point.x;
+
+        const startY = point.y;
+
+        const endY = point.y - direction * arrowLength;
+
+        const line = document.createElementNS(svgns, "line");
+
+        line.setAttribute("x1", x);
+
+        line.setAttribute("y1", startY);
+
+        line.setAttribute("x2", x);
+
+        line.setAttribute("y2", endY);
+
+        line.setAttribute("class", "floor-transition-line");
+
+        line.setAttribute("marker-end", "url(#routeArrow)");
+
+        svg.appendChild(line);
+
+        // -----------------------------------------------------
+        // Text
+        // -----------------------------------------------------
+
+        const text = document.createElementNS(svgns, "text");
+
+        text.setAttribute("x", x + 28);
+
+        text.setAttribute("y", endY + 4);
+
+        text.setAttribute("class", "floor-transition-text");
+
+        text.textContent =
+          direction > 0
+            ? `Go to ${getFloorName(nextFloor)}`
+            : `Go to ${getFloorName(nextFloor)}`;
+
+        svg.appendChild(text);
+
+        // -----------------------------------------------------
+        // Make transition clickable.
+        // -----------------------------------------------------
+
+        const group = document.createElementNS(svgns, "g");
+
+        group.classList.add("floor-transition");
+
+        group.addEventListener("click", () => {
+          moveToFloor(nextFloor);
+        });
+
+        /*
+         * Transparent hit area makes the
+         * transition easier to click.
+         */
+
+        const hitArea = document.createElementNS(svgns, "rect");
+
+        hitArea.setAttribute("x", x - 25);
+
+        hitArea.setAttribute("y", Math.min(startY, endY) - 10);
+
+        hitArea.setAttribute("width", "50");
+
+        hitArea.setAttribute("height", Math.abs(endY - startY) + 20);
+
+        hitArea.setAttribute("fill", "transparent");
+
+        group.appendChild(hitArea);
+
+        /*
+         * Put the group at the end so it
+         * receives the click.
+         */
+
+        svg.appendChild(group);
+      }
+
+      // =========================================================
+      // MOVE TO NEXT FLOOR
+      // =========================================================
+
+      function moveToFloor(nextFloor) {
+        currentFloor = nextFloor;
+
+        updateCurrentLocation();
+
+        renderFloorTabs();
+
+        loadFloor();
+
+        document.getElementById("navigationMessage").innerText =
+          `Moved to ${getFloorName(nextFloor)}.`;
+      }
+
+      // =========================================================
+      // OUTDOOR BUILDING TRANSITION
+      // =========================================================
+
+      function drawBuildingTransition(svg, point, nextBuilding, routeType) {
+        const endX = point.x + 68;
+
+        const line = document.createElementNS(svgns, "line");
+
+        line.setAttribute("x1", point.x);
+        line.setAttribute("y1", point.y);
+        line.setAttribute("x2", endX);
+        line.setAttribute("y2", point.y);
+        line.setAttribute("class", "floor-transition-line");
+        line.setAttribute("marker-end", "url(#routeArrow)");
+
+        svg.appendChild(line);
+
+        const text = document.createElementNS(svgns, "text");
+
+        text.setAttribute("x", endX + 85);
+        text.setAttribute("y", point.y - 8);
+        text.setAttribute("class", "floor-transition-text");
+        text.textContent =
+          routeType === "covered"
+            ? `Continue indoors to ${buildingLabels[nextBuilding]}`
+            : `Walk outside to ${buildingLabels[nextBuilding]}`;
+
+        svg.appendChild(text);
+
+        const group = document.createElementNS(svgns, "g");
+
+        group.classList.add("floor-transition");
+        group.addEventListener("click", () => {
+          moveToBuilding(nextBuilding);
+        });
+
+        const hitArea = document.createElementNS(svgns, "rect");
+
+        hitArea.setAttribute("x", point.x - 12);
+        hitArea.setAttribute("y", point.y - 26);
+        hitArea.setAttribute("width", 250);
+        hitArea.setAttribute("height", 48);
+        hitArea.setAttribute("fill", "transparent");
+
+        group.appendChild(hitArea);
+        svg.appendChild(group);
+      }
+
+      function moveToBuilding(nextBuilding) {
+        const nextPoint = lastPathCoords.find(
+          (point) => point.building === nextBuilding,
+        );
+
+        currentBuilding = nextBuilding;
+        currentFloor = nextPoint ? nextPoint.floor : 0;
+
+        updateCurrentLocation();
+        renderBuildingTabs();
+        renderFloorTabs();
+        loadFloor();
+
+        document.getElementById("navigationMessage").innerText =
+          `Moved outside to ${buildingLabels[nextBuilding]}.`;
+      }
+
+      // =========================================================
+      // DRAW ROUTE
+      // =========================================================
+
+      function highlightPathOnCurrentView() {
+        const svg = document.getElementById("floorMap");
+
+        /*
+         * Get route points belonging to this
+         * building and floor.
+         */
+
+        const onThisView = lastPathCoords.filter(
+          (p) => p.building === currentBuilding && p.floor === currentFloor,
+        );
+
+        if (onThisView.length === 0) {
+          return;
+        }
+
+        createRouteArrowMarker(svg);
+
+        const segmentTotals = {};
+
+        const sameFloorSegments = [];
+
+        for (let i = 0; i < onThisView.length - 1; i++) {
+          const from = onThisView[i];
+
+          const to = onThisView[i + 1];
+
+          if (from.building !== to.building || from.floor !== to.floor) {
+            continue;
+          }
+
+          const key = corridorKey(from, to);
+
+          segmentTotals[key] = (segmentTotals[key] || 0) + 1;
+
+          sameFloorSegments.push({ from, to, key });
+        }
+
+        const ONE_WAY_OFFSET = 7;
+
+        const TWO_WAY_OFFSET = 11;
+
+        // -----------------------------------------------------
+        // Draw normal route segments.
+        // Opposite directions on the same corridor always get
+        // opposite lanes, even if node names do not match.
+        // -----------------------------------------------------
+
+        sameFloorSegments.forEach((segment) => {
+          const from = segment.from;
+
+          const to = segment.to;
+
+          const dx = to.x - from.x;
+
+          const dy = to.y - from.y;
+
+          const length = Math.sqrt(dx * dx + dy * dy) || 1;
+
+          const isTwoWay = segmentTotals[segment.key] > 1;
+
+          const forward = isCanonicalDirection(from, to);
+
+          const lane = isTwoWay
+            ? forward
+              ? TWO_WAY_OFFSET
+              : -TWO_WAY_OFFSET
+            : ONE_WAY_OFFSET;
+
+          const offsetX = (-dy / length) * lane;
+
+          const offsetY = (dx / length) * lane;
+
+          const nodePad = 14;
+
+          const headPad = 10;
+
+          const maxTrim = Math.max(0, (length - 18) / 2);
+
+          const trimStart = Math.min(nodePad, maxTrim);
+
+          const trimEnd = Math.min(nodePad + headPad, maxTrim);
+
+          const unitX = dx / length;
+
+          const unitY = dy / length;
+
+          const startX = from.x + offsetX + unitX * trimStart;
+
+          const startY = from.y + offsetY + unitY * trimStart;
+
+          const endX = to.x + offsetX - unitX * trimEnd;
+
+          const endY = to.y + offsetY - unitY * trimEnd;
+
+          if (Math.hypot(endX - startX, endY - startY) < 8) {
+            return;
+          }
+
+          const line = document.createElementNS(svgns, "line");
+
+          line.setAttribute("x1", startX);
+
+          line.setAttribute("y1", startY);
+
+          line.setAttribute("x2", endX);
+
+          line.setAttribute("y2", endY);
+
+          line.setAttribute("stroke", "#2b6cff");
+
+          line.setAttribute("stroke-width", "2.5");
+
+          line.setAttribute("stroke-linecap", "butt");
+
+          line.setAttribute("marker-end", "url(#routeArrow)");
+
+          line.classList.add("route-line");
+
+          line.addEventListener("click", () => {
+            showDestination();
+          });
+
+          svg.appendChild(line);
+        });
+
+        // -----------------------------------------------------
+        // IMPORTANT:
+        //
+        // Look at the LAST point on this floor.
+        //
+        // If its NEXT route point is on another floor,
+        // draw an explicit staircase transition.
+        // -----------------------------------------------------
+
+        const lastVisible = onThisView[onThisView.length - 1];
+
+        const globalIndex = lastPathCoords.findIndex(
+          (p) => p.name === lastVisible.name,
+        );
+
+        if (globalIndex >= 0 && globalIndex < lastPathCoords.length - 1) {
+          const nextPoint = lastPathCoords[globalIndex + 1];
+
+          if (
+            nextPoint.building === currentBuilding &&
+            nextPoint.floor !== currentFloor
+          ) {
+            /*
+             * We have reached the staircase
+             * on this floor.
+             */
+
+            drawFloorTransition(svg, lastVisible, nextPoint.floor);
+          }
+
+          if (nextPoint.building !== currentBuilding) {
+            drawBuildingTransition(
+              svg,
+              lastVisible,
+              nextPoint.building,
+              lastVisible.next_route_type,
+            );
+          }
+        }
+
+        drawFloorNodes(svg);
+
+        // -----------------------------------------------------
+        // START MARKER
+        // -----------------------------------------------------
+
+        const start = lastPathCoords[0];
+
+        if (
+          start.building === currentBuilding &&
+          start.floor === currentFloor
+        ) {
+          const startDot = document.createElementNS(svgns, "circle");
+
+          startDot.setAttribute("cx", start.x);
+
+          startDot.setAttribute("cy", start.y);
+
+          startDot.setAttribute("r", "9");
+
+          startDot.setAttribute("fill", "#2b6cff");
+
+          svg.appendChild(startDot);
+        }
+
+        // -----------------------------------------------------
+        // VIA STOP MARKER
+        // -----------------------------------------------------
+
+        onThisView
+          .filter((point) => point.is_stop)
+          .forEach((stop) => {
+            const stopDot = document.createElementNS(svgns, "circle");
+
+            stopDot.setAttribute("cx", stop.x);
+
+            stopDot.setAttribute("cy", stop.y);
+
+            stopDot.setAttribute("r", "8");
+
+            stopDot.setAttribute("fill", "#ff9500");
+
+            stopDot.setAttribute("stroke", "white");
+
+            stopDot.setAttribute("stroke-width", "3");
+
+            stopDot.classList.add("stop-marker");
+
+            svg.appendChild(stopDot);
+          });
+
+        // -----------------------------------------------------
+        // DESTINATION MARKER
+        // -----------------------------------------------------
+
+        const destination = lastPathCoords[lastPathCoords.length - 1];
+
+        if (
+          destination.building === currentBuilding &&
+          destination.floor === currentFloor
+        ) {
+          const endDot = document.createElementNS(svgns, "circle");
+
+          endDot.setAttribute("cx", destination.x);
+
+          endDot.setAttribute("cy", destination.y);
+
+          endDot.setAttribute("r", "9");
+
+          endDot.setAttribute("fill", "#ff3b30");
+
+          endDot.classList.add("destination-pulse");
+
+          svg.appendChild(endDot);
+        }
+      }
+
+      // =========================================================
+      // NORMAL ARROW CLICK
+      // =========================================================
+
+      function showDestination() {
+        const destination = lastPathCoords[lastPathCoords.length - 1];
+
+        document.getElementById("navigationMessage").innerText =
+          "Continue following the blue arrows toward the red destination.";
+      }
+
+      // =========================================================
+      // OUTDOOR -> INDOOR
+      // =========================================================
+
+      function playZoomTransition() {
+        document.getElementById("outdoorView").classList.add("zoomed");
+
+        document.getElementById("indoorView").classList.add("visible");
+      }
+
+      // =========================================================
+      // RESET
+      // =========================================================
+
+      function resetZoomTransition() {
+        document.getElementById("outdoorView").classList.remove("zoomed");
+
+        document.getElementById("indoorView").classList.remove("visible");
+      }
+
+      function hideRouteOptions() {
+        document.getElementById("routeOptions").style.display = "none";
+      }
+
+      function showRouteOptions(modes, selectedMode) {
+        const container = document.getElementById("routeOptions");
+
+        if (!modes || modes.length < 2) {
+          hideRouteOptions();
+          return;
+        }
+
+        container.innerHTML = "<strong>Choose your route:</strong> ";
+
+        const labels = {
+          indoor: "Indoor / covered",
+          outdoor: "Outdoor walkway",
+        };
+
+        modes.forEach((mode) => {
+          const button = document.createElement("button");
+
+          button.textContent = labels[mode];
+
+          if (mode === selectedMode) {
+            button.classList.add("active");
+          }
+
+          button.addEventListener("click", () => findPath(mode));
+
+          container.appendChild(button);
+        });
+
+        container.style.display = "block";
+      }
+
+      // =========================================================
+      // FIND PATH
+      // =========================================================
+
+      function findPath(mode = "indoor") {
+        selectedRouteMode = mode;
+
+        const from = document.getElementById("from").value.trim();
+
+        const via = document.getElementById("via").value.trim();
+
+        const to = document.getElementById("to").value.trim();
+
+        // -----------------------------------------------------
+        // User MUST provide From
+        // -----------------------------------------------------
+
+        if (!from) {
+          hideCurrentLocation();
+
+          hideRouteOptions();
+
+          document.getElementById("result").innerText =
+            "Please enter your starting room number.";
+
+          return;
+        }
+
+        // -----------------------------------------------------
+        // User MUST provide To
+        // -----------------------------------------------------
+
+        if (!to) {
+          hideCurrentLocation();
+
+          hideRouteOptions();
+
+          document.getElementById("result").innerText =
+            "Please enter your destination room number.";
+
+          return;
+        }
+
+        let url = `/path?from=${encodeURIComponent(
+          from,
+        )}&to=${encodeURIComponent(to)}&mode=${encodeURIComponent(mode)}`;
+
+        if (via) {
+          url += `&via=${encodeURIComponent(via)}`;
+        }
+
+        fetch(url)
+          .then((response) => response.json())
+
+          .then((data) => {
+            if (data.error) {
+              hideCurrentLocation();
+
+              hideRouteOptions();
+
+              document.getElementById("result").innerText =
+                "Error: " + data.error;
+
+              resetZoomTransition();
+
+              return;
+            }
+
+            if (!data.path_coords || data.path_coords.length === 0) {
+              hideCurrentLocation();
+
+              hideRouteOptions();
+
+              document.getElementById("result").innerText =
+                "No navigation route was returned.";
+
+              return;
+            }
+
+            // ------------------------------------------------
+            // DIRECTIONS
+            // ------------------------------------------------
+
+            document.getElementById("result").innerText =
+              data.directions.join("\n");
+
+            showRouteOptions(data.available_modes, data.route_mode);
+
+            // ------------------------------------------------
+            // SAVE ROUTE
+            // ------------------------------------------------
+
+            lastPathCoords = data.path_coords;
+
+            // ------------------------------------------------
+            // STARTING BLOCK/FLOOR
+            // ------------------------------------------------
+
+            currentBuilding = lastPathCoords[0].building;
+
+            currentFloor = lastPathCoords[0].floor;
+
+            updateCurrentLocation();
+
+            // ------------------------------------------------
+            // RESET MAP
+            // ------------------------------------------------
+
+            const svg = document.getElementById("floorMap");
+
+            svg.style.transform = "translate(0px, 0px) scale(1)";
+
+            document.getElementById("navigationMessage").innerText = "";
+
+            // ------------------------------------------------
+            // LOAD STARTING BUILDING
+            // ------------------------------------------------
+
+            renderBuildingTabs();
+
+            renderFloorTabs();
+
+            loadFloor();
+
+            playZoomTransition();
+          })
+
+          .catch((error) => {
+            console.error(error);
+
+            hideCurrentLocation();
+
+            document.getElementById("result").innerText =
+              "Could not reach server. Is app.py running?";
+          });
+      }
+
+      // =========================================================
+      // INITIALIZE
+      // =========================================================
+
+      hideCurrentLocation();
+
+      loadBuildings();
+    </script>
+  </body>
+</html>

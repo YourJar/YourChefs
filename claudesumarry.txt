@@ -1,0 +1,26 @@
+Recalled memory
+The project
+An indoor navigation app for VIT Vellore, aimed at first-years and second-years who get lost inside confusing campus buildings. Long-term vision includes a Street View-style "freestyle roam" mode and a "directional" guided mode — but for the hackathon, we're building a scoped-down, working MVP first.
+
+What's actually built so far (in app.py + index.html)
+Feature	Status
+Graph-based building layout (rooms, junctions, distances)	✅ Done
+Dijkstra shortest-path algorithm	✅ Done, tested
+Flask backend serving /path, /floor, /buildings, /rooms	✅ Done
+Turn-by-turn text directions ("take a left", "go up the stairs")	✅ Done
+Initial orientation instruction ("face towards increasing room numbers")	✅ Done
+Optional "via" stop on the way to destination	✅ Done
+Type just the room number, not the full PRP-101 name	✅ Done, case-insensitive
+Two floors, connected via a staircase	✅ Done
+Two buildings (Orange Bldg 1 & 2), connected via an outdoor "walk outside" edge	✅ Done
+Building + Floor tabs to switch which map you're viewing	✅ Done
+SVG floor map with rooms/corridors drawn to scale	✅ Done
+Outdoor campus image → zoom-in → crossfade into indoor floor map	✅ Done
+Blue dot ("you are here") + red dot (destination) on the map	✅ Done
+Arrows on the path showing direction of travel	🔧 In progress — just added the arrowhead marker to the SVG, was about to rewrite the path-drawing function to use arrowed segments instead of one plain line
+What's still fake/placeholder
+Room numbers and layout are placeholder data (PRP-101, ORG2-501, etc.) — not the real VIT building yet.
+Only 2 of the ~8 buildings on campus are modeled.
+No photosphere/Street View visuals yet (that was scoped out for later, in favor of the flat SVG map).
+Right where we left off
+I was mid-edit on index.html: added the arrowhead marker definition inside drawBaseMap(), but haven't yet rewritten the path-highlighting function to actually draw segments with arrows (it's still drawing one plain polyline). That's the next thing to finish.

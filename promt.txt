@@ -1,0 +1,76 @@
+PREVIOUS ATTEMPT FAILED. The map still draws two arrowheads on ONE centerline. Look at image.png in this folder. That is the CURRENT broken result. Do not stop until those exact overlaps are gone.
+
+WHAT IS STILL WRONG IN image.png
+1) Edge 106-101: two blue arrowheads sit on the same short horizontal segment and point at each other. This is the main bug.
+2) Edge STAIRS-102: one diagonal stroke with an arrowhead at BOTH ends.
+3) Junction 107 -> 108 -> 109: two/three blue heads stacked on the same pixels.
+4) Route stroke is painted on the same geometry as the gray corridor line.
+
+WRONG PATTERN (what the code is doing now)
+- one line between two rooms
+- marker at start AND marker at end
+- or two directions drawn with the same coordinates
+That always looks overlapped.
+
+REQUIRED PATTERN
+For any two-way edge, draw TWO separate strokes, shifted left/right of the center line.
+
+Example for 106-101:
+        106 ---->  101     (upper track)
+        106 <----  101     (lower track)
+A visible gap must exist between those two tracks. Never two heads on one stroke.
+
+For a one-way route edge, draw ONE track only, slightly offset from the gray base edge, with ONE head, trimmed so it stops before the room box.
+
+DO THIS FIRST BEFORE EDITING
+Search the repo for the renderer. Print the file path and function name you will change.
+Search for:
+- marker-start, marker-end, markerStart, markerEnd
+- arrow, arrowhead, arrow-end, mid-arrow
+- polyline, path, lineTo, quadratic, bezier
+- bidirectional, two-way, direction
+- edge, corridor, route, path overlay
+- SVG <marker>, canvas drawImage of a triangle, or a polygon at the line end
+
+If you cannot find it, stop and list candidate files. Do not tweak CSS colors again.
+
+THEN CHANGE THE DRAWING CODE
+1. Delete double-headed arrows. A single path may have at most ONE arrowhead.
+2. If an edge is two-way (106-101 clearly is), split it into two paths.
+3. Offset with a perpendicular:
+
+   function offsetPoints(x1,y1,x2,y2,dist) {
+     const dx = x2-x1, dy = y2-y1;
+     const len = Math.hypot(dx,dy) || 1;
+     const ox = -dy/len*dist, oy = dx/len*dist;
+     return { x1:x1+ox, y1:y1+oy, x2:x2+ox, y2:y2+oy };
+   }
+
+   two-way:
+     A = offsetPoints(..., +12)
+     B = offsetPoints(..., -12)
+   one-way route:
+     A = offsetPoints(..., +8)
+
+   Use 10-14px first so the gap is obvious in a screenshot. If it clips a room, reduce slightly, but keep a visible gap.
+4. Trim every arrow so it does not enter the room box.
+   Move both endpoints toward the segment midpoint by nodeRadius + 10px.
+   Arrowheads must sit in the corridor, not on the label.
+5. At 107/108/109, each segment is its own offset path with its own single head. No shared marker, no two heads at the same point.
+6. Draw order:
+   gray base edges (no arrows)
+   blue offset route/two-way arrows
+   room nodes and labels
+   destination marker last
+7. Do not change room layout, block/floor tabs, or the actual route from STAIRS to 109.
+8. Do not "fix" this by making arrows thinner, changing blue to another color, or moving the destination circle. Those are not the bug.
+
+ACCEPTANCE — all must be true
+- 106-101 is two parallel tracks with a clear white/gray gap between them
+- STAIRS-102 is either one offset one-way arrow OR two parallel tracks, never heads on both ends of one line
+- 102-107 is one clean arrow, not sitting exactly on the gray edge
+- 107-108-109 heads are separated, not stacked
+- room numbers stay readable
+- a new screenshot of this same floor would not match image.png
+
+After editing, quote the changed function and the offset/trim numbers you used.
