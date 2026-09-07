@@ -152,6 +152,122 @@
         opacity: 0;
       }
 
+      #campusMap {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        background: var(--paper);
+      }
+
+      .campus-block {
+        cursor: pointer;
+      }
+
+      .campus-block-shape {
+        fill: var(--paper-fill);
+        stroke: var(--paper-line);
+        stroke-width: 3;
+        transition:
+          fill 0.15s ease,
+          stroke 0.15s ease;
+      }
+
+      .campus-block:hover .campus-block-shape {
+        fill: #fde8c2;
+        stroke: var(--route);
+      }
+
+      .campus-block-label {
+        font-family: var(--font-ui);
+        font-size: 19px;
+        font-weight: 600;
+        fill: var(--text-on-paper);
+        pointer-events: none;
+      }
+
+      /* Campus is one continuous large footprint. Walkways are
+         deliberately straight/angled, like the supplied sketch. */
+      .campus-mass {
+        fill: var(--paper-fill);
+        stroke: var(--paper-line);
+        stroke-width: 3;
+        stroke-linejoin: round;
+      }
+
+      .campus-zone {
+        fill: transparent;
+        stroke: transparent;
+        cursor: pointer;
+        pointer-events: all;
+      }
+
+      .campus-zone:hover {
+        fill: rgba(242, 169, 59, 0.12);
+        stroke: rgba(242, 169, 59, 0.55);
+        stroke-width: 2;
+      }
+
+      .campus-link {
+        stroke: var(--paper-line);
+        stroke-width: 4;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .campus-link-inner {
+        stroke: var(--paper);
+        stroke-width: 2;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .outdoor-route-line {
+        stroke: var(--route);
+        stroke-width: 8;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        opacity: 1;
+        pointer-events: stroke;
+        cursor: pointer;
+      }
+
+      .outdoor-route-line:hover {
+        stroke-width: 9;
+      }
+
+      .outdoor-route-arrow {
+        fill: var(--route);
+        stroke: none;
+      }
+
+      .route-line-arrow {
+        fill: var(--route);
+        stroke: none;
+      }
+      .outdoor-route-layer {
+        pointer-events: none;
+      }
+
+      .outdoor-route-layer .outdoor-route-line {
+        pointer-events: stroke;
+      }
+
+      .outdoor-start-dot {
+        fill: var(--route);
+        stroke: #fff;
+        stroke-width: 3;
+      }
+
+      .outdoor-end-dot {
+        fill: var(--destination);
+        stroke: #fff;
+        stroke-width: 3;
+      }
+
       #indoorView {
         position: absolute;
         inset: 0;
@@ -162,8 +278,13 @@
         transition: opacity 0.6s ease-in;
       }
 
+      #indoorView {
+        pointer-events: none;
+      }
+
       #indoorView.visible {
         opacity: 1;
+        pointer-events: auto;
       }
 
       .map-toolbar {
@@ -330,6 +451,27 @@
         margin-top: 4px;
       }
 
+      #backBtn {
+        display: none;
+        width: 100%;
+        margin-top: 12px;
+        padding: 8px 10px;
+        border-radius: 7px;
+        border: 1px solid var(--ink-line);
+        background: #0b1830;
+        color: var(--text-on-ink);
+        font-size: 12.5px;
+        font-weight: 500;
+        cursor: pointer;
+        transition:
+          border-color 0.15s ease,
+          background 0.15s ease;
+      }
+
+      #backBtn:hover {
+        border-color: var(--route);
+      }
+
       /* -----------------------------------------------------
          DIRECTIONS / ROUTE OPTIONS
          ----------------------------------------------------- */
@@ -429,8 +571,8 @@
 
       .floor-transition-text {
         font-family: var(--font-mono);
-        font-size: 11px;
-        font-weight: 600;
+        font-size: 18px;
+        font-weight: 700;
         fill: var(--route-deep);
         text-anchor: middle;
       }
@@ -549,7 +691,13 @@
       <div id="app-content">
         <div class="map-panel">
           <div id="mapStage">
-            <div id="outdoorView"></div>
+            <div id="outdoorView">
+              <svg
+                id="campusMap"
+                viewBox="0 0 1000 900"
+                preserveAspectRatio="xMidYMid meet"
+              ></svg>
+            </div>
 
             <div id="indoorView">
               <div class="map-toolbar">
@@ -560,7 +708,7 @@
               <div class="map-canvas">
                 <svg
                   id="floorMap"
-                  viewBox="0 0 480 340"
+                  viewBox="0 0 1400 900"
                   preserveAspectRatio="xMidYMid meet"
                 ></svg>
               </div>
@@ -594,6 +742,7 @@
             <h2>Current location</h2>
             <div id="currentBlock">Current Block:</div>
             <div id="currentFloor">Current Floor:</div>
+            <button id="backBtn" type="button"></button>
           </div>
 
           <div class="card">
@@ -619,7 +768,14 @@
 
       let lastPathCoords = [];
 
+      // Stack of {building, floor} the user has moved away from,
+      // most recent last, so "Back" can retrace their steps one
+      // move at a time. Cleared whenever a fresh route is found.
+      let navigationHistory = [];
+
       let buildingLayout = {};
+
+      let campusLayoutData = null;
 
       let selectedRouteMode = "indoor";
 
@@ -628,11 +784,13 @@
 
         B: "B Block",
 
-        C: "C Block",
-
         D: "D Block",
 
         E: "E Block",
+
+        F: "F Block",
+
+        M: "Main Entrance",
       };
 
       // =========================================================
@@ -689,6 +847,496 @@
       }
 
       // =========================================================
+      // NAVIGATION HISTORY (BACK BUTTON)
+      // =========================================================
+
+      // Call this BEFORE currentBuilding/currentFloor are changed,
+      // so the place being left is what gets remembered.
+      function recordVisitedFloor() {
+        if (!currentBuilding || currentFloor === null) {
+          return;
+        }
+
+        navigationHistory.push({
+          building: currentBuilding,
+          floor: currentFloor,
+        });
+
+        updateBackButton();
+      }
+
+      function updateBackButton() {
+        const btn = document.getElementById("backBtn");
+
+        if (navigationHistory.length === 0) {
+          btn.style.display = "none";
+          return;
+        }
+
+        const previous = navigationHistory[navigationHistory.length - 1];
+
+        btn.textContent = `← Back to ${
+          buildingLabels[previous.building] || previous.building
+        }, ${getFloorName(previous.floor)}`;
+
+        btn.style.display = "block";
+      }
+
+      function goBack() {
+        if (navigationHistory.length === 0) {
+          return;
+        }
+
+        const previous = navigationHistory.pop();
+
+        currentBuilding = previous.building;
+
+        currentFloor = previous.floor;
+
+        updateCurrentLocation();
+
+        renderBuildingTabs();
+
+        renderFloorTabs();
+
+        loadFloor();
+
+        updateBackButton();
+
+        document.getElementById("navigationMessage").innerText =
+          `Back to ${buildingLabels[currentBuilding]}, ${getFloorName(currentFloor)}.`;
+      }
+
+      // =========================================================
+      // CAMPUS OVERVIEW (outdoor, whole-campus view)
+      //
+      // A big SVG drawn from /campus_layout: each block as a
+      // hexagon-ish shape, joined by a single curved line per
+      // connection - so the wings and pods read as one connected
+      // chain, echoing the campus's real footprint, rather than a
+      // flat photo with no sense of how the blocks relate.
+      // =========================================================
+
+      function hexagonPoints(cx, cy, w, h) {
+        const hw = w / 2;
+
+        const hh = h / 2;
+
+        const notch = Math.min(hw, hh) * 0.42;
+
+        return [
+          [cx - hw + notch, cy - hh],
+          [cx + hw - notch, cy - hh],
+          [cx + hw, cy],
+          [cx + hw - notch, cy + hh],
+          [cx - hw + notch, cy + hh],
+          [cx - hw, cy],
+        ]
+          .map((point) => point.join(","))
+          .join(" ");
+      }
+
+      function addWrappedCampusLabel(group, cx, cy, text) {
+        const words = text.split(" ");
+
+        const lineHeight = 22;
+
+        const startY = cy - ((words.length - 1) * lineHeight) / 2;
+
+        words.forEach((word, index) => {
+          const label = document.createElementNS(svgns, "text");
+
+          label.setAttribute("x", cx);
+
+          label.setAttribute("y", startY + index * lineHeight);
+
+          label.setAttribute("text-anchor", "middle");
+
+          label.setAttribute("dominant-baseline", "central");
+
+          label.classList.add("campus-block-label");
+
+          label.textContent = word;
+
+          group.appendChild(label);
+        });
+      }
+
+      function campusConnectionPoints(a, b) {
+        const dx = b.cx - a.cx;
+        const dy = b.cy - a.cy;
+        const horizontal = Math.abs(dx) > Math.abs(dy);
+
+        if (horizontal) {
+          return {
+            start: { x: a.cx + (dx > 0 ? a.w * 0.34 : -a.w * 0.34), y: a.cy },
+            end: { x: b.cx - (dx > 0 ? b.w * 0.34 : -b.w * 0.34), y: b.cy },
+          };
+        }
+
+        return {
+          start: { x: a.cx, y: a.cy + (dy > 0 ? a.h * 0.46 : -a.h * 0.46) },
+          end: { x: b.cx, y: b.cy - (dy > 0 ? b.h * 0.46 : -b.h * 0.46) },
+        };
+      }
+
+      function campusConnectionPath(a, b) {
+        const points = campusConnectionPoints(a, b);
+        const start = points.start;
+        const end = points.end;
+
+        // Campus walkways are intentionally simple and direct.
+        // Use one straight segment from the edge of one block to the
+        // edge of the next, matching the user's sketch.
+        return `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
+      }
+
+      function drawCampusConnections(svg, buildings, connections) {
+        const byId = {};
+
+        buildings.forEach((building) => {
+          byId[building.id] = building;
+        });
+
+        connections.forEach((connection) => {
+          const a = byId[connection.from];
+          const b = byId[connection.to];
+
+          if (!a || !b) {
+            return;
+          }
+
+          const d = campusConnectionPath(a, b);
+
+          const outer = document.createElementNS(svgns, "path");
+          outer.setAttribute("d", d);
+          outer.classList.add("campus-link");
+          svg.appendChild(outer);
+
+          const inner = document.createElementNS(svgns, "path");
+          inner.setAttribute("d", d);
+          inner.classList.add("campus-link-inner");
+          svg.appendChild(inner);
+        });
+      }
+
+      function campusMassPoints() {
+        return [
+          [120, 115],
+          [360, 92],
+          [500, 105],
+          [640, 92],
+          [890, 120],
+          [925, 285],
+          [875, 355],
+          [900, 525],
+          [760, 610],
+          [650, 585],
+          [610, 730],
+          [390, 735],
+          [350, 610],
+          [225, 565],
+          [105, 455],
+          [125, 300],
+        ]
+          .map((point) => point.join(","))
+          .join(" ");
+      }
+
+      function campusZonePoints(building) {
+        const zones = {
+          E: [
+            [145, 135],
+            [360, 112],
+            [405, 205],
+            [375, 330],
+            [155, 315],
+            [125, 225],
+          ],
+          A: [
+            [595, 112],
+            [865, 135],
+            [895, 225],
+            [870, 330],
+            [625, 315],
+            [575, 205],
+          ],
+          D: [
+            [205, 330],
+            [390, 325],
+            [455, 395],
+            [420, 545],
+            [255, 555],
+            [180, 455],
+          ],
+          B: [
+            [610, 325],
+            [795, 330],
+            [850, 455],
+            [775, 550],
+            [585, 540],
+            [545, 395],
+          ],
+          M: [
+            [420, 535],
+            [580, 535],
+            [640, 610],
+            [575, 710],
+            [425, 710],
+            [360, 610],
+          ],
+          F: [
+            [430, 705],
+            [570, 705],
+            [600, 755],
+            [560, 820],
+            [440, 820],
+            [400, 755],
+          ],
+        };
+        return (zones[building.id] || [])
+          .map((point) => point.join(","))
+          .join(" ");
+      }
+
+      function drawCampusBuildings(svg, buildings) {
+        buildings.forEach((building) => {
+          const group = document.createElementNS(svgns, "g");
+          group.classList.add("campus-block");
+          group.addEventListener("click", () => enterBuilding(building.id));
+
+          const shape = document.createElementNS(svgns, "polygon");
+          shape.setAttribute(
+            "points",
+            hexagonPoints(building.cx, building.cy, building.w, building.h),
+          );
+          shape.classList.add("campus-block-shape");
+          group.appendChild(shape);
+
+          addWrappedCampusLabel(group, building.cx, building.cy, building.name);
+          svg.appendChild(group);
+        });
+      }
+
+      function clearOutdoorRoute() {
+        const existing = document.getElementById("outdoorRouteLayer");
+        if (existing) {
+          existing.remove();
+        }
+      }
+
+      function drawOutdoorRouteSegment(svg, a, b, index) {
+        const layer = document.getElementById("outdoorRouteLayer");
+        if (!layer) return;
+
+        const points = campusConnectionPoints(a, b);
+        const start = points.start;
+        const end = points.end;
+
+        const path = document.createElementNS(svgns, "path");
+        path.setAttribute("d", `M ${start.x} ${start.y} L ${end.x} ${end.y}`);
+        path.setAttribute("class", "outdoor-route-line");
+        path.addEventListener("click", (event) => {
+          event.stopPropagation();
+          showDestination();
+        });
+        layer.appendChild(path);
+
+        // Draw several real arrowheads along the route. SVG marker-end
+        // only gives one head and can disappear at a block boundary.
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const length = Math.hypot(dx, dy) || 1;
+        const ux = dx / length;
+        const uy = dy / length;
+        const angle = Math.atan2(dy, dx);
+        // Keep a single direction arrow at the exact centre of the line.
+        // This makes the direction readable without visually favouring either end.
+        const positions = [0.5];
+
+        positions.forEach((ratio) => {
+          const x = start.x + dx * ratio;
+          const y = start.y + dy * ratio;
+          const size = 14;
+          const half = 7;
+          const tipX = x + ux * size;
+          const tipY = y + uy * size;
+          const backX = x - ux * 2;
+          const backY = y - uy * 2;
+          const px = -uy;
+          const py = ux;
+
+          const arrow = document.createElementNS(svgns, "polygon");
+          arrow.setAttribute(
+            "points",
+            `${tipX},${tipY} ${backX + px * half},${backY + py * half} ${backX - px * half},${backY - py * half}`,
+          );
+          arrow.setAttribute("class", "outdoor-route-arrow");
+          arrow.style.pointerEvents = "none";
+          layer.appendChild(arrow);
+        });
+      }
+
+      function createCampusRouteArrowMarker(svg) {
+        if (svg.querySelector("#campusRouteArrow")) {
+          return;
+        }
+
+        const defs = document.createElementNS(svgns, "defs");
+        const marker = document.createElementNS(svgns, "marker");
+        marker.setAttribute("id", "campusRouteArrow");
+        marker.setAttribute("markerWidth", "13");
+        marker.setAttribute("markerHeight", "13");
+        marker.setAttribute("refX", "13");
+        marker.setAttribute("refY", "6.5");
+        marker.setAttribute("viewBox", "0 0 13 13");
+        marker.setAttribute("orient", "auto");
+        marker.setAttribute("markerUnits", "userSpaceOnUse");
+
+        const arrow = document.createElementNS(svgns, "path");
+        arrow.setAttribute("d", "M0,2 L13,6.5 L0,11 Z");
+        arrow.setAttribute("fill", "#f2a93b");
+        marker.appendChild(arrow);
+        defs.appendChild(marker);
+        svg.appendChild(defs);
+      }
+
+      function highlightOutdoorPath() {
+        const svg = document.getElementById("campusMap");
+        if (!svg || !campusLayoutData || !lastPathCoords.length) {
+          return;
+        }
+
+        clearOutdoorRoute();
+        createCampusRouteArrowMarker(svg);
+
+        const layer = document.createElementNS(svgns, "g");
+        layer.setAttribute("id", "outdoorRouteLayer");
+        layer.classList.add("outdoor-route-layer");
+        svg.appendChild(layer);
+
+        const byId = {};
+        campusLayoutData.buildings.forEach((building) => {
+          byId[building.id] = building;
+        });
+
+        const buildingSequence = [];
+        lastPathCoords.forEach((point) => {
+          if (!buildingSequence.includes(point.building)) {
+            buildingSequence.push(point.building);
+          }
+        });
+
+        for (let i = 0; i < buildingSequence.length - 1; i++) {
+          const from = byId[buildingSequence[i]];
+          const to = byId[buildingSequence[i + 1]];
+          if (from && to) {
+            drawOutdoorRouteSegment(svg, from, to, i);
+          }
+        }
+
+        // Mark the first and last buildings so the outdoor route is
+        // immediately understandable without opening a floor map.
+        const startBuilding = byId[buildingSequence[0]];
+        const endBuilding = byId[buildingSequence[buildingSequence.length - 1]];
+
+        [
+          {
+            building: startBuilding,
+            className: "outdoor-start-dot",
+            label: "Start",
+          },
+          {
+            building: endBuilding,
+            className: "outdoor-end-dot",
+            label: "Destination",
+          },
+        ].forEach((item) => {
+          if (!item.building) return;
+          const dot = document.createElementNS(svgns, "circle");
+          dot.setAttribute("cx", item.building.cx);
+          dot.setAttribute("cy", item.building.cy);
+          dot.setAttribute("r", "9");
+          dot.setAttribute("class", item.className);
+          layer.appendChild(dot);
+        });
+      }
+
+      function loadCampusLayout() {
+        fetch("/campus_layout")
+          .then((response) => response.json())
+
+          .then((data) => {
+            const svg = document.getElementById("campusMap");
+
+            if (!svg) {
+              return;
+            }
+
+            svg.setAttribute(
+              "viewBox",
+              `0 0 ${data.canvas.width} ${data.canvas.height}`,
+            );
+
+            campusLayoutData = data;
+
+            svg.innerHTML = "";
+
+            // Draw the campus in the same block layout as the reference:
+            // each block remains a distinct building, while the walkways
+            // between them are straight, double-line connections.
+            // This keeps the first page easy to understand and clickable.
+            drawCampusConnections(svg, data.buildings, data.connections);
+            drawCampusBuildings(svg, data.buildings);
+          })
+
+          .catch((error) => {
+            console.error(error);
+          });
+      }
+
+      // =========================================================
+      // ENTER BUILDING FROM CAMPUS OVERVIEW
+      // =========================================================
+
+      function enterBuilding(buildingId) {
+        if (!buildingLayout[buildingId]) {
+          return;
+        }
+
+        const wasOutdoorRoute =
+          selectedRouteMode === "outdoor" && lastPathCoords.length > 0;
+
+        navigationHistory = [];
+        currentBuilding = buildingId;
+        currentFloor = buildingLayout[buildingId][0];
+
+        // Keep the calculated outdoor path when entering a block so the
+        // indoor view can show the corresponding entrance/stair arrow.
+        if (!wasOutdoorRoute) {
+          lastPathCoords = [];
+          clearOutdoorRoute();
+        } else {
+          clearOutdoorRoute();
+        }
+
+        updateBackButton();
+        updateCurrentLocation();
+        renderBuildingTabs();
+        renderFloorTabs();
+        loadFloor();
+
+        document.getElementById("routeOptions").style.display = wasOutdoorRoute
+          ? "block"
+          : "none";
+        document.getElementById("navigationMessage").innerText = wasOutdoorRoute
+          ? "Follow the amber arrow through this block."
+          : "";
+
+        playZoomTransition(currentBuilding);
+      }
+
+      // =========================================================
       // LOAD BUILDINGS
       // =========================================================
 
@@ -702,6 +1350,8 @@
             currentBuilding = null;
 
             currentFloor = null;
+
+            navigationHistory = [];
 
             hideCurrentLocation();
 
@@ -733,6 +1383,12 @@
           tab.textContent = buildingLabels[buildingId];
 
           tab.onclick = () => {
+            if (buildingId === currentBuilding) {
+              return;
+            }
+
+            recordVisitedFloor();
+
             currentBuilding = buildingId;
 
             currentFloor = buildingLayout[buildingId][0];
@@ -773,6 +1429,12 @@
           tab.textContent = getFloorName(floorNum);
 
           tab.onclick = () => {
+            if (floorNum === currentFloor) {
+              return;
+            }
+
+            recordVisitedFloor();
+
             currentFloor = floorNum;
 
             updateCurrentLocation();
@@ -869,7 +1531,7 @@
 
           line.setAttribute("stroke", "#c9d6e5");
 
-          line.setAttribute("stroke-width", "4");
+          line.setAttribute("stroke-width", "6");
 
           line.setAttribute("stroke-linecap", "square");
 
@@ -893,21 +1555,21 @@
           if (pos.type === "room") {
             const square = document.createElementNS(svgns, "rect");
 
-            square.setAttribute("x", pos.x - 12);
+            square.setAttribute("x", pos.x - 18);
 
-            square.setAttribute("y", pos.y - 12);
+            square.setAttribute("y", pos.y - 18);
 
-            square.setAttribute("width", "24");
+            square.setAttribute("width", "36");
 
-            square.setAttribute("height", "24");
+            square.setAttribute("height", "36");
 
-            square.setAttribute("rx", "3");
+            square.setAttribute("rx", "4");
 
             square.setAttribute("fill", "#e3ebf4");
 
             square.setAttribute("stroke", "#345272");
 
-            square.setAttribute("stroke-width", "1.25");
+            square.setAttribute("stroke-width", "1.8");
 
             square.classList.add("room-square");
 
@@ -929,7 +1591,7 @@
 
             label.setAttribute("font-family", "IBM Plex Mono, monospace");
 
-            label.setAttribute("font-size", "8.5");
+            label.setAttribute("font-size", "12");
 
             label.setAttribute("font-weight", "600");
 
@@ -946,21 +1608,21 @@
           else if (pos.type === "stairs") {
             const stair = document.createElementNS(svgns, "rect");
 
-            stair.setAttribute("x", pos.x - 14);
+            stair.setAttribute("x", pos.x - 21);
 
-            stair.setAttribute("y", pos.y - 14);
+            stair.setAttribute("y", pos.y - 21);
 
-            stair.setAttribute("width", "28");
+            stair.setAttribute("width", "42");
 
-            stair.setAttribute("height", "28");
+            stair.setAttribute("height", "42");
 
-            stair.setAttribute("rx", "3");
+            stair.setAttribute("rx", "4");
 
             stair.setAttribute("fill", "#f6e7c4");
 
             stair.setAttribute("stroke", "#8c6d1f");
 
-            stair.setAttribute("stroke-width", "1.5");
+            stair.setAttribute("stroke-width", "2");
 
             svg.appendChild(stair);
 
@@ -968,13 +1630,13 @@
 
             label.setAttribute("x", pos.x);
 
-            label.setAttribute("y", pos.y + 30);
+            label.setAttribute("y", pos.y + 46);
 
             label.setAttribute("text-anchor", "middle");
 
             label.setAttribute("font-family", "IBM Plex Mono, monospace");
 
-            label.setAttribute("font-size", "8.5");
+            label.setAttribute("font-size", "12");
 
             label.setAttribute("font-weight", "600");
 
@@ -991,13 +1653,13 @@
           else if (pos.type === "entrance") {
             const entrance = document.createElementNS(svgns, "rect");
 
-            entrance.setAttribute("x", pos.x - 12);
+            entrance.setAttribute("x", pos.x - 18);
 
-            entrance.setAttribute("y", pos.y - 12);
+            entrance.setAttribute("y", pos.y - 18);
 
-            entrance.setAttribute("width", "24");
+            entrance.setAttribute("width", "36");
 
-            entrance.setAttribute("height", "24");
+            entrance.setAttribute("height", "36");
 
             entrance.setAttribute("rx", "3");
 
@@ -1005,19 +1667,19 @@
 
             entrance.setAttribute("stroke", "#2f7a4d");
 
-            entrance.setAttribute("stroke-width", "1.5");
+            entrance.setAttribute("stroke-width", "2");
 
             svg.appendChild(entrance);
 
             const label = document.createElementNS(svgns, "text");
 
-            label.setAttribute("x", pos.x + 25);
+            label.setAttribute("x", pos.x + 34);
 
             label.setAttribute("y", pos.y + 4);
 
             label.setAttribute("font-family", "Space Grotesk, sans-serif");
 
-            label.setAttribute("font-size", "10");
+            label.setAttribute("font-size", "12");
 
             label.setAttribute("fill", "#1a2c47");
 
@@ -1043,15 +1705,15 @@
 
         marker.setAttribute("id", "routeArrow");
 
-        marker.setAttribute("markerWidth", "10");
+        marker.setAttribute("markerWidth", "13");
 
-        marker.setAttribute("markerHeight", "10");
+        marker.setAttribute("markerHeight", "13");
 
-        marker.setAttribute("refX", "10");
+        marker.setAttribute("refX", "13");
 
-        marker.setAttribute("refY", "5");
+        marker.setAttribute("refY", "6.5");
 
-        marker.setAttribute("viewBox", "0 0 10 10");
+        marker.setAttribute("viewBox", "0 0 13 13");
 
         marker.setAttribute("orient", "auto");
 
@@ -1059,7 +1721,7 @@
 
         const arrow = document.createElementNS(svgns, "path");
 
-        arrow.setAttribute("d", "M0,1.5 L10,5 L0,8.5 Z");
+        arrow.setAttribute("d", "M0,2 L13,6.5 L0,11 Z");
 
         arrow.setAttribute("fill", "#f2a93b");
 
@@ -1105,7 +1767,7 @@
       function drawFloorTransition(svg, point, nextFloor) {
         const direction = nextFloor > currentFloor ? 1 : -1;
 
-        const arrowLength = 45;
+        const arrowLength = 58;
 
         const x = point.x;
 
@@ -1131,7 +1793,7 @@
 
         const text = document.createElementNS(svgns, "text");
 
-        text.setAttribute("x", x + 28);
+        text.setAttribute("x", x + 36);
 
         text.setAttribute("y", endY + 4);
 
@@ -1171,6 +1833,8 @@
       // =========================================================
 
       function moveToFloor(nextFloor) {
+        recordVisitedFloor();
+
         currentFloor = nextFloor;
 
         updateCurrentLocation();
@@ -1188,7 +1852,7 @@
       // =========================================================
 
       function drawBuildingTransition(svg, point, nextBuilding, routeType) {
-        const endX = point.x + 68;
+        const endX = point.x + 82;
 
         const line = document.createElementNS(svgns, "line");
 
@@ -1203,7 +1867,7 @@
 
         const text = document.createElementNS(svgns, "text");
 
-        text.setAttribute("x", endX + 85);
+        text.setAttribute("x", endX + 105);
         text.setAttribute("y", point.y - 8);
         text.setAttribute("class", "floor-transition-text");
         text.textContent =
@@ -1236,6 +1900,8 @@
         const nextPoint = lastPathCoords.find(
           (point) => point.building === nextBuilding,
         );
+
+        recordVisitedFloor();
 
         currentBuilding = nextBuilding;
         currentFloor = nextPoint ? nextPoint.floor : 0;
@@ -1357,11 +2023,9 @@
 
           line.setAttribute("stroke", "#f2a93b");
 
-          line.setAttribute("stroke-width", "2.5");
+          line.setAttribute("stroke-width", "3.5");
 
           line.setAttribute("stroke-linecap", "butt");
-
-          line.setAttribute("marker-end", "url(#routeArrow)");
 
           line.classList.add("route-line");
 
@@ -1370,6 +2034,26 @@
           });
 
           svg.appendChild(line);
+
+          // Direction arrow is placed at the centre of this route segment.
+          const midX = (startX + endX) / 2;
+          const midY = (startY + endY) / 2;
+          const arrowSize = 13;
+          const half = 6.5;
+          const px = -unitY;
+          const py = unitX;
+          const tipX = midX + unitX * arrowSize;
+          const tipY = midY + unitY * arrowSize;
+          const backX = midX - unitX * 4;
+          const backY = midY - unitY * 4;
+          const arrow = document.createElementNS(svgns, "polygon");
+          arrow.setAttribute(
+            "points",
+            `${tipX},${tipY} ${backX + px * half},${backY + py * half} ${backX - px * half},${backY - py * half}`,
+          );
+          arrow.setAttribute("class", "route-line-arrow");
+          arrow.style.pointerEvents = "none";
+          svg.appendChild(arrow);
         });
 
         // -----------------------------------------------------
@@ -1387,31 +2071,40 @@
         //    a room/stair/entrance box.
         // -----------------------------------------------------
 
-        const lastVisible = onThisView[onThisView.length - 1];
+        // A via-stop can cause the route to revisit the same floor
+        // more than once (e.g. climbing past it on the way up, then
+        // passing back through it on the way down). Node names like
+        // "C-STAIRS-2" then appear more than once in lastPathCoords,
+        // so matching by name (or only checking the last occurrence
+        // on this floor) picks the wrong occurrence and can drop a
+        // needed transition arrow. Check every occurrence on this
+        // floor, and use indexOf (object identity) rather than name
+        // matching, so each one resolves to its own real position.
+        onThisView.forEach((point) => {
+          const globalIndex = lastPathCoords.indexOf(point);
 
-        const globalIndex = lastPathCoords.findIndex(
-          (p) => p.name === lastVisible.name,
-        );
+          if (globalIndex < 0 || globalIndex >= lastPathCoords.length - 1) {
+            return;
+          }
 
-        if (globalIndex >= 0 && globalIndex < lastPathCoords.length - 1) {
           const nextPoint = lastPathCoords[globalIndex + 1];
 
           if (
             nextPoint.building === currentBuilding &&
             nextPoint.floor !== currentFloor
           ) {
-            drawFloorTransition(svg, lastVisible, nextPoint.floor);
+            drawFloorTransition(svg, point, nextPoint.floor);
           }
 
           if (nextPoint.building !== currentBuilding) {
             drawBuildingTransition(
               svg,
-              lastVisible,
+              point,
               nextPoint.building,
-              lastVisible.next_route_type,
+              point.next_route_type,
             );
           }
-        }
+        });
 
         // -----------------------------------------------------
         // START MARKER
@@ -1509,9 +2202,19 @@
       // OUTDOOR -> INDOOR
       // =========================================================
 
-      function playZoomTransition() {
-        document.getElementById("outdoorView").classList.add("zoomed");
+      function playZoomTransition(buildingId) {
+        const outdoor = document.getElementById("outdoorView");
+        const building = campusLayoutData?.buildings?.find(
+          (item) => item.id === buildingId,
+        );
 
+        if (building) {
+          const originX = (building.cx / 1000) * 100;
+          const originY = (building.cy / 900) * 100;
+          outdoor.style.transformOrigin = `${originX}% ${originY}%`;
+        }
+
+        outdoor.classList.add("zoomed");
         document.getElementById("indoorView").classList.add("visible");
       }
 
@@ -1520,7 +2223,9 @@
       // =========================================================
 
       function resetZoomTransition() {
-        document.getElementById("outdoorView").classList.remove("zoomed");
+        const outdoor = document.getElementById("outdoorView");
+        outdoor.classList.remove("zoomed");
+        outdoor.style.transformOrigin = "20% 20%";
 
         document.getElementById("indoorView").classList.remove("visible");
       }
@@ -1650,21 +2355,36 @@
 
             currentFloor = lastPathCoords[0].floor;
 
+            navigationHistory = [];
+
+            updateBackButton();
+
             updateCurrentLocation();
-
-            const svg = document.getElementById("floorMap");
-
-            svg.style.transform = "translate(0px, 0px) scale(1)";
 
             document.getElementById("navigationMessage").innerText = "";
 
+            if (mode === "outdoor") {
+              // Outdoor navigation belongs on the campus overview.
+              // Do not zoom into a floor map; draw the calculated
+              // building-to-building route directly on the first page.
+              const outdoor = document.getElementById("outdoorView");
+              outdoor.classList.remove("zoomed");
+              outdoor.style.transformOrigin = "20% 20%";
+              document.getElementById("indoorView").classList.remove("visible");
+              clearOutdoorRoute();
+              highlightOutdoorPath();
+              document.getElementById("navigationMessage").innerText =
+                "Follow the amber line on the campus map.";
+              return;
+            }
+
+            const svg = document.getElementById("floorMap");
+            svg.style.transform = "translate(0px, 0px) scale(1)";
+
             renderBuildingTabs();
-
             renderFloorTabs();
-
             loadFloor();
-
-            playZoomTransition();
+            playZoomTransition(currentBuilding);
           })
 
           .catch((error) => {
@@ -1686,7 +2406,11 @@
 
       document.getElementById("result").classList.add("placeholder");
 
+      document.getElementById("backBtn").addEventListener("click", goBack);
+
       loadBuildings();
+
+      loadCampusLayout();
     </script>
   </body>
 </html>

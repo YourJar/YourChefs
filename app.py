@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, send_from_directory
 import heapq
 import math
 import os
+import random
 import re
 
 
@@ -27,76 +28,54 @@ room_ranges = {
         7: [(742, 752)],
     },
 
+    # B block is two hexagons (formerly mislabeled "second row
+    # right" and "third row right"), joined into one wing.
     "B": {
-        0: [(60, 67)],
-        1: [(163, 171)],
-        2: [(258, 266)],
-        3: [(362, 370)],
-        4: [(456, 463)],
-        5: [(561, 567)],
-        6: [(662, 669)],
-        7: [(759, 765)],
+        0: [(1, 7), (17, 21)],
+        1: [(101, 108), (119, 124)],
+        2: [(201, 207), (219, 222)],
+        3: [(301, 307), (317, 321)],
+        4: [(401, 406), (413, 416)],
+        5: [(501, 506), (518, 521)],
+        6: [(601, 604), (615, 620)],
+        7: [(701, 705), (716, 721)],
     },
 
-    "C": {
-        0: [
-            (1, 13),
-            (14, 16),
-            (17, 28),
-        ],
-
-        1: [
-            (101, 114),
-            (115, 118),
-            (119, 131),
-        ],
-
-        2: [
-            (201, 212),
-            (213, 218),
-            (219, 227),
-        ],
-
-        3: [
-            (301, 311),
-            (312, 315),
-            (317, 326),
-        ],
-
-        4: [
-            (401, 410),
-            (411, 413),
-            (414, 421),
-        ],
-
-        5: [
-            (501, 511),
-            (512, 517),
-            (518, 526),
-        ],
-
-        6: [
-            (601, 609),
-            (611, 614),
-            (615, 626),
-        ],
-
-        7: [
-            (701, 713),
-            (714, 715),
-            (716, 728),
-        ],
-    },
-
+    # D block is two hexagons (formerly mislabeled "second row
+    # left" and "third row left"), joined into one wing.
     "D": {
-        0: [(68, 72)],
-        1: [(172, 176)],
-        2: [(267, 275)],
-        3: [(371, 379)],
-        4: [(464, 472)],
-        5: [(568, 576)],
-        6: [(670, 678)],
-        7: [(766, 773)],
+        0: [(8, 13), (22, 28)],
+        1: [(108, 113), (125, 131)],
+        2: [(208, 212), (222, 229)],
+        3: [(307, 311), (321, 326)],
+        4: [(406, 410), (417, 421)],
+        5: [(507, 511), (522, 526)],
+        6: [(605, 609), (621, 626)],
+        7: [(706, 713), (722, 728)],
+    },
+
+    # M is the Main Entrance hexagon, sitting between the D and B
+    # wings, next to the PRP Canteen.
+    "M": {
+        0: [(14, 16)],
+        1: [(115, 116)],
+        2: [(213, 218)],
+        3: [(312, 316)],
+        4: [(411, 413)],
+        5: [(512, 517)],
+        6: [(610, 610)],
+        7: [(714, 715)],
+    },
+
+    # F is the bottom hexagon below the Main Entrance. It has no
+    # rooms on the ground floor and no rooms on floor 7.
+    "F": {
+        1: [(117, 117)],
+        2: [(216, 217)],
+        3: [(315, 315)],
+        4: [(412, 412)],
+        5: [(513, 516)],
+        6: [(611, 614)],
     },
 
     "E": {
@@ -115,10 +94,31 @@ room_ranges = {
 building_names = {
     "A": "A Block",
     "B": "B Block",
-    "C": "C Block",
     "D": "D Block",
     "E": "E Block",
+    "F": "F Block",
+    "M": "Main Entrance",
 }
+
+
+# Building letters actually in use, used to build the room-lookup
+# regex below. Kept dynamic so adding/removing a building doesn't
+# require touching the parsing logic separately.
+BUILDING_LETTERS = "".join(sorted(room_ranges.keys()))
+
+
+# =========================================================
+# CANVAS
+#
+# Size of the per-floor SVG coordinate space. Made large and
+# roomy on purpose: pods sit far enough apart that the corridor
+# line connecting them reads as a real, visible connection
+# rather than the pods looking like one packed-together block.
+# =========================================================
+
+CANVAS_WIDTH = 1400
+
+CANVAS_HEIGHT = 900
 
 
 # =========================================================
@@ -204,115 +204,241 @@ positions = {}
 # GENERATE ROOM POSITIONS
 # =========================================================
 
-def generate_room_positions(
-    building,
-    floor,
-    room_numbers
+# =========================================================
+# CURVED CORRIDOR SPINE
+#
+# Each pod's rooms sit along a single bending corridor line
+# (a quadratic curve) rather than fixed hexagon vertices - closer
+# to how a real hallway bends around a building's footprint.
+# Rooms cluster in small pairs that bulge slightly off the spine
+# to each side, instead of sitting in one strict file, echoing how
+# real classrooms bunch up along a corridor rather than lining up
+# perfectly on a single centerline.
+#
+# The bend direction/amount is randomized but seeded deterministically
+# per building+floor+pod, so re-generating the app always produces
+# the same layout, while still giving every pod its own loose,
+# organic curve rather than a rigid repeated shape.
+# =========================================================
+
+def curved_corridor_points(
+    center_x,
+    center_y,
+    width,
+    height,
+    count,
+    seed
 ):
 
-    # One classroom occupies each side of a hexagon. Hexagons are
-    # arranged in a grid: up to 3 per row, wrapping to a new row
-    # below once a row is full - matching a real floor plan layout
-    # rather than a single line or a ring.
-    rooms_per_hexagon = 6
+    if count <= 0:
 
-    hexagon_groups = [
-        room_numbers[index:index + rooms_per_hexagon]
-        for index in range(0, len(room_numbers), rooms_per_hexagon)
-    ]
+        return []
 
-    max_per_row = 3
+    rng = random.Random(seed)
 
-    num_groups = len(hexagon_groups)
+    # Endpoints of the corridor spine, with a small vertical jitter
+    # so consecutive pods don't all look identical.
+    start_y = center_y + rng.uniform(-0.18, 0.18) * height
 
-    num_rows = math.ceil(num_groups / max_per_row)
+    end_y = center_y + rng.uniform(-0.18, 0.18) * height
 
-    margin = 20
+    p0 = (center_x - width / 2, start_y)
 
-    # Reserve some space on the left for the staircase, which sits
-    # outside the room grid rather than inside it.
-    stairs_reserved_width = 60
+    p2 = (center_x + width / 2, end_y)
 
-    usable_width = 480 - 2 * margin - stairs_reserved_width
+    # Bend the spine up or down, loosely echoing the way the real
+    # building outlines curve rather than running perfectly straight.
+    bend_direction = 1 if rng.random() < 0.5 else -1
 
-    usable_height = 340 - 2 * margin
+    bend_amount = height * rng.uniform(0.30, 0.55)
 
-    slot_width = usable_width / max_per_row
+    control_x = (p0[0] + p2[0]) / 2
 
-    slot_height = usable_height / num_rows
-
-    grid_left = margin + stairs_reserved_width
-
-    # 0.8 safety factor leaves a visible gap between hexagons, both
-    # horizontally and vertically.
-    hexagon_radius = min(
-        52,
-        (slot_width / 2 / 0.86) * 0.8,
-        (slot_height / 2 / 0.75) * 0.8
+    control_y = (
+        (p0[1] + p2[1]) / 2
+        + bend_direction * bend_amount
     )
 
-    side_positions = [
-        (0.43, -0.75),
-        (0.86, 0),
-        (0.43, 0.75),
-        (-0.43, 0.75),
-        (-0.86, 0),
-        (-0.43, -0.75),
+    perp_amplitude = min(18, height * 0.22)
+
+    points = []
+
+    for index in range(count):
+
+        t = 0.5 if count == 1 else index / (count - 1)
+
+        one_minus_t = 1 - t
+
+        # Point on the quadratic bezier spine.
+        x = (
+            one_minus_t ** 2 * p0[0]
+            + 2 * one_minus_t * t * control_x
+            + t ** 2 * p2[0]
+        )
+
+        y = (
+            one_minus_t ** 2 * p0[1]
+            + 2 * one_minus_t * t * control_y
+            + t ** 2 * p2[1]
+        )
+
+        # Tangent direction at this point, used to offset the room
+        # sideways off the spine rather than along it.
+        tangent_x = (
+            2 * one_minus_t * (control_x - p0[0])
+            + 2 * t * (p2[0] - control_x)
+        )
+
+        tangent_y = (
+            2 * one_minus_t * (control_y - p0[1])
+            + 2 * t * (p2[1] - control_y)
+        )
+
+        tangent_length = math.hypot(tangent_x, tangent_y) or 1
+
+        perp_x = -tangent_y / tangent_length
+
+        perp_y = tangent_x / tangent_length
+
+        # Rooms bulge off the spine in alternating pairs, matching
+        # the little clustered squares in the reference sketch.
+        cluster_side = 1 if (index // 2) % 2 == 0 else -1
+
+        offset = perp_amplitude * cluster_side
+
+        points.append((
+            x + perp_x * offset,
+            y + perp_y * offset
+        ))
+
+    return points
+
+
+# =========================================================
+# GENERATE ROOM POSITIONS
+#
+# Each entry in `ranges` is one physically annotated pod (matching
+# an individual hexagon marked on the campus map), not an arbitrary
+# chunk of six. Every pod's rooms are laid out along their own
+# curved corridor. When a floor has more than one pod, the pods
+# are chained left to right with real gaps between them - the
+# corridor edge connecting the last room of one pod to the first
+# room of the next (already created elsewhere) then reads as a
+# visible line bridging that gap.
+# =========================================================
+
+def perimeter_points(count, cx, cy, width, height, shape="rectangle", rotation=-math.pi / 2):
+    """Place room centers evenly around a closed perimeter."""
+    if count <= 0:
+        return []
+    if count == 1:
+        return [(cx, cy)]
+
+    points = []
+    if shape == "hexagon":
+        vertices = []
+        rx = width / 2
+        ry = height / 2
+        for i in range(6):
+            angle = rotation + i * math.pi / 3
+            vertices.append((cx + rx * math.cos(angle),
+                            cy + ry * math.sin(angle)))
+
+        # Walk equal distances along the six sides.
+        lengths = []
+        total = 0.0
+        for i in range(6):
+            a = vertices[i]
+            b = vertices[(i + 1) % 6]
+            length = math.hypot(b[0] - a[0], b[1] - a[1])
+            lengths.append(length)
+            total += length
+
+        for n in range(count):
+            d = total * n / count
+            acc = 0.0
+            for i, length in enumerate(lengths):
+                if d <= acc + length or i == 5:
+                    a = vertices[i]
+                    b = vertices[(i + 1) % 6]
+                    t = 0 if length == 0 else (d - acc) / length
+                    points.append((
+                        a[0] + (b[0] - a[0]) * t,
+                        a[1] + (b[1] - a[1]) * t,
+                    ))
+                    break
+                acc += length
+        return points
+
+    # Rectangle: distribute rooms equally along the four sides.
+    half_w = width / 2
+    half_h = height / 2
+    corners = [
+        (cx - half_w, cy - half_h),
+        (cx + half_w, cy - half_h),
+        (cx + half_w, cy + half_h),
+        (cx - half_w, cy + half_h),
     ]
+    lengths = [width, height, width, height]
+    total = sum(lengths)
+    for n in range(count):
+        d = total * n / count
+        acc = 0.0
+        for i, length in enumerate(lengths):
+            if d <= acc + length or i == 3:
+                a = corners[i]
+                b = corners[(i + 1) % 4]
+                t = 0 if length == 0 else (d - acc) / length
+                points.append((
+                    a[0] + (b[0] - a[0]) * t,
+                    a[1] + (b[1] - a[1]) * t,
+                ))
+                break
+            acc += length
+    return points
 
-    for group_index, group in enumerate(hexagon_groups):
 
-        row = group_index // max_per_row
+def generate_room_positions(building, floor, ranges):
+    """Generate floor layouts matching each block's physical footprint."""
+    room_numbers = expand_ranges(ranges)
+    count = len(room_numbers)
 
-        col = group_index % max_per_row
+    margin = 80
+    cx = CANVAS_WIDTH / 2 + 50
+    cy = CANVAS_HEIGHT / 2
+    width = min(900, CANVAS_WIDTH - 320)
+    height = min(620, CANVAS_HEIGHT - 220)
 
-        center_x = grid_left + slot_width / 2 + col * slot_width
+    # A and E are enclosed rectangular blocks.
+    # B and D are enclosed hexagonal blocks.
+    if building in ("A", "E"):
+        points = perimeter_points(
+            count, cx, cy, width, height, shape="rectangle"
+        )
+    elif building in ("B", "D"):
+        points = perimeter_points(
+            count, cx, cy, width * 0.92, height * 0.82, shape="hexagon"
+        )
+    else:
+        # Keep M/F as compact organic single-pod layouts.
+        points = curved_corridor_points(
+            cx, cy, width * 0.62, height * 0.55,
+            count, seed=f"{building}-{floor}"
+        )
 
-        center_y = margin + slot_height / 2 + row * slot_height
+    for room_number, (x, y) in zip(room_numbers, points):
+        node_name = f"{building}-{room_number}"
+        positions[node_name] = {
+            "x": x,
+            "y": y,
+            "floor": floor,
+            "building": building,
+            "type": "room",
+            "room_number": room_number,
+        }
 
-        start_side = 0
-
-        for index, room_number in enumerate(group):
-
-            side_x, side_y = side_positions[
-                (start_side + index) % 6
-            ]
-
-            x = center_x + hexagon_radius * side_x
-
-            y = center_y + hexagon_radius * side_y
-
-            node_name = (
-                f"{building}-{room_number}"
-            )
-
-            positions[node_name] = {
-
-                "x": x,
-
-                "y": y,
-
-                "floor": floor,
-
-                "building": building,
-
-                "type": "room",
-
-                "room_number":
-                    room_number
-
-            }
-
-    # Staircase sits just left of the grid, vertically centered
-    # relative to the full grid height (not the map height), so it
-    # lines up naturally next to whichever rooms are nearest it.
-    grid_total_height = slot_height * num_rows
-
-    stair_x = margin + stairs_reserved_width / 2
-
-    stair_y = margin + grid_total_height / 2
-
-    return stair_x, stair_y
+    # Put the staircase just outside the left side of the footprint.
+    return (margin, cy)
 
 
 # =========================================================
@@ -322,15 +448,15 @@ def generate_room_positions(
 stair_positions = {}
 
 for building, floors in \
-        rooms_by_floor.items():
+        room_ranges.items():
 
-    for floor, room_numbers in \
+    for floor, ranges in \
             floors.items():
 
         stair_x, stair_y = generate_room_positions(
             building,
             floor,
-            room_numbers
+            ranges
         )
 
         stair_positions[(building, floor)] = (stair_x, stair_y)
@@ -352,7 +478,8 @@ for building in room_ranges:
 
         stair_x, stair_y = stair_positions.get(
             (building, floor),
-            (240, 170)  # fallback for a floor with no room data
+            # fallback for a floor with no room data
+            (CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2)
         )
 
         positions[stair_node] = {
@@ -382,9 +509,9 @@ for building in room_ranges:
 
     positions[entrance_node] = {
 
-        "x": 20,
+        "x": 60,
 
-        "y": 285,
+        "y": CANVAS_HEIGHT - 80,
 
         "floor": 0,
 
@@ -400,51 +527,46 @@ for building in room_ranges:
 # =========================================================
 
 for building, floors in \
-        rooms_by_floor.items():
+        room_ranges.items():
 
-    for floor, room_numbers in \
+    for floor, ranges in \
             floors.items():
+
+        room_numbers = expand_ranges(ranges)
 
         # -------------------------------------------------
         # Connect rooms in sequence
+        #
+        # This also connects the last room of one pod to the
+        # first room of the next pod, which is exactly the
+        # corridor line that should bridge the gap between two
+        # neighbouring hexagons.
         # -------------------------------------------------
 
-        for i in range(
-            len(room_numbers) - 1
-        ):
+        for i in range(len(room_numbers)):
+            room1 = f"{building}-{room_numbers[i]}"
+            room2 = f"{building}-{room_numbers[(i + 1) % len(room_numbers)]}"
 
-            room1 = (
-                f"{building}-{room_numbers[i]}"
-            )
+            # The final room connects back to the first room so A/E
+            # rectangles and B/D hexagons are real closed corridors.
+            if room1 != room2:
+                add_edge(
+                    room1,
+                    room2,
+                    3,
+                    "follow the corridor"
+                )
 
-            room2 = (
-                f"{building}-{room_numbers[i + 1]}"
-            )
-
+        # A and E are closed circular corridors, so connect the last
+        # room back to the first room as well. This makes the visible
+        # corridor a true closed loop and allows routing around either
+        # side of the circle.
+        if building in ("A", "E") and len(room_numbers) > 2:
             add_edge(
-                room1,
-                room2,
+                f"{building}-{room_numbers[-1]}",
+                f"{building}-{room_numbers[0]}",
                 3,
-                "follow the corridor"
-            )
-
-        # Close each six-room group into a hexagonal corridor loop.
-        # The regular sequence edge between groups remains a clean
-        # corridor connection, with no classroom in the middle.
-        for room_group in (
-            room_numbers[index:index + 6]
-            for index in range(0, len(room_numbers), 6)
-        ):
-
-            if len(room_group) < 2:
-
-                continue
-
-            add_edge(
-                f"{building}-{room_group[-1]}",
-                f"{building}-{room_group[0]}",
-                3,
-                "continue around the hexagonal corridor"
+                "follow the circular corridor"
             )
 
         # -------------------------------------------------
@@ -492,19 +614,28 @@ for building in room_ranges:
 
 
 # =========================================================
-# CONNECT BUILDINGS: U-SHAPED CAMPUS WALKWAY
+# CONNECT BUILDINGS: CAMPUS WALKWAY
 #
-# The coloured campus-map blocks form a U-shaped sequence:
-# A -> B -> C -> D -> E.  Each outdoor edge joins the two
-# building entrances, allowing a route to continue naturally
-# from one block to the next.
+# Physical layout of the PRP complex: E and A are the two large
+# blocks at the top, side by side. Below E sits the D wing, below
+# A sits the B wing, and the Main Entrance (M) hexagon sits
+# between D and B. The F wing hangs below M. Each outdoor edge
+# joins the two building entrances, allowing a route to continue
+# naturally from one block to the next:
+#
+#         E                       A
+#         |                       |
+#         D --------- M --------- B
+#                      |
+#                      F
 # =========================================================
 
 campus_walkways = [
-    ("A", "B", 20),
-    ("B", "C", 14),
-    ("C", "D", 14),
-    ("D", "E", 20),
+    ("E", "D", 14),
+    ("D", "M", 10),
+    ("M", "B", 10),
+    ("B", "A", 14),
+    ("M", "F", 8),
 ]
 
 for from_building, to_building, distance in campus_walkways:
@@ -811,11 +942,14 @@ def get_directions(
 # A43
 # A-43
 # A 43
-# C101
-# C-101
-# C 101
+# D108
+# D-108
+# D 108
 #
 # Bare numbers are supported.
+#
+# Building letters are read from BUILDING_LETTERS so this stays
+# correct if buildings are ever added, removed, or renamed.
 # =========================================================
 
 def normalize_room(
@@ -863,11 +997,11 @@ def normalize_room(
 
     # -----------------------------------------------------
     # A43 -> A-43
-    # C101 -> C-101
+    # D108 -> D-108
     # -----------------------------------------------------
 
     match = re.fullmatch(
-        r"([A-E])[-]?(\d+)",
+        rf"([{BUILDING_LETTERS}])[-]?(\d+)",
         value
     )
 
@@ -1453,10 +1587,86 @@ def get_floor():
             for name, pos
             in nodes_on_floor.items()
 
-        ],
+                ],
 
         "edges":
             edges
+
+    })
+
+
+# =========================================================
+# CAMPUS LAYOUT
+#
+# A big, spread-out overview of how the blocks physically sit
+# next to each other, mirroring the real PRP footprint:
+#
+#         E                       A
+#         |                       |
+#         D --------- M --------- B
+#                      |
+#                      F
+#
+# Positions are hand-placed (not generated) so the two long wings
+# (E, A) read as wings and the smaller pods (D, B, M, F) read as
+# pods, same as the campus_walkways graph already connects them.
+# =========================================================
+
+CAMPUS_CANVAS = {"width": 1000, "height": 900}
+
+CAMPUS_LAYOUT = {
+    "E": {"cx": 220, "cy": 180, "w": 220, "h": 320, "kind": "wing"},
+    "A": {"cx": 780, "cy": 180, "w": 220, "h": 320, "kind": "wing"},
+    "D": {"cx": 300, "cy": 455, "w": 170, "h": 170, "kind": "pod"},
+    "B": {"cx": 700, "cy": 455, "w": 170, "h": 170, "kind": "pod"},
+    "M": {"cx": 500, "cy": 620, "w": 160, "h": 150, "kind": "pod"},
+    "F": {"cx": 500, "cy": 805, "w": 120, "h": 110, "kind": "pod"},
+}
+
+
+@app.route("/campus_layout")
+def get_campus_layout():
+
+    buildings = []
+
+    for building in room_ranges:
+
+        layout = CAMPUS_LAYOUT.get(building)
+
+        if not layout:
+
+            continue
+
+        buildings.append({
+
+            "id": building,
+
+            "name": building_names[building],
+
+            "cx": layout["cx"],
+
+            "cy": layout["cy"],
+
+            "w": layout["w"],
+
+            "h": layout["h"],
+
+            "kind": layout["kind"]
+
+        })
+
+    connections = [
+        {"from": from_building, "to": to_building}
+        for from_building, to_building, _distance in campus_walkways
+    ]
+
+    return jsonify({
+
+        "canvas": CAMPUS_CANVAS,
+
+        "buildings": buildings,
+
+        "connections": connections
 
     })
 
