@@ -178,6 +178,30 @@
         stroke: var(--route);
       }
 
+      /* C Block is an open semi-hexagon.  Never let the hover fill
+         close its open outline with an SVG diagonal. */
+      .campus-block:hover .campus-open-fill {
+        fill: #fde8c2;
+      }
+
+      .campus-block:hover .campus-open-outline {
+        fill: #fde8c2 !important;
+        stroke: var(--route);
+      }
+
+      .campus-entrance-line {
+        stroke: var(--route);
+        stroke-width: 8;
+        stroke-linecap: round;
+      }
+
+      .campus-entrance-label {
+        font-family: var(--font-mono);
+        font-size: 13px;
+        font-weight: 600;
+        fill: var(--route-deep);
+      }
+
       .campus-block-label {
         font-family: var(--font-ui);
         font-size: 19px;
@@ -290,11 +314,17 @@
       .map-toolbar {
         flex: 0 0 auto;
         display: flex;
-        flex-wrap: wrap;
-        gap: 8px 6px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
         padding: 12px 14px 10px;
         background: var(--paper);
         border-bottom: 1px solid var(--paper-line-soft);
+      }
+
+      #buildingTabs,
+      #floorTabs {
+        width: 100%;
       }
 
       .tab-row {
@@ -788,9 +818,7 @@
 
         E: "E Block",
 
-        F: "F Block",
-
-        M: "Main Entrance",
+        C: "C Block",
       };
 
       // =========================================================
@@ -936,184 +964,157 @@
           .join(" ");
       }
 
-      function addWrappedCampusLabel(group, cx, cy, text) {
-        const words = text.split(" ");
+      function semiHexagonPoints(cx, cy, w, h) {
+        const hw = w / 2;
+        const hh = h / 2;
+        // C Block is a closed, vertically oriented hexagonal footprint.
+        // Its room/entrance arrangement is handled separately in the floor view.
+        return [
+          [cx - hw * 0.58, cy - hh],
+          [cx + hw * 0.58, cy - hh],
+          [cx + hw, cy - hh * 0.15],
+          [cx + hw * 0.62, cy + hh],
+          [cx - hw * 0.62, cy + hh],
+          [cx - hw, cy - hh * 0.15],
+        ];
+      }
 
-        const lineHeight = 22;
+      function drawOpenSemiHexagon(group, building) {
+        const points = semiHexagonPoints(
+          building.cx,
+          building.cy,
+          building.w,
+          building.h,
+        );
 
-        const startY = cy - ((words.length - 1) * lineHeight) / 2;
-
-        words.forEach((word, index) => {
-          const label = document.createElementNS(svgns, "text");
-
-          label.setAttribute("x", cx);
-
-          label.setAttribute("y", startY + index * lineHeight);
-
-          label.setAttribute("text-anchor", "middle");
-
-          label.setAttribute("dominant-baseline", "central");
-
-          label.classList.add("campus-block-label");
-
-          label.textContent = word;
-
-          group.appendChild(label);
-        });
+        // C is a CLOSED campus footprint. The room/entrance arrangement is
+        // shown in the floor view; the top view keeps C as one complete block.
+        const polygon = document.createElementNS(svgns, "polygon");
+        polygon.setAttribute(
+          "points",
+          points.map((point) => point.join(",")).join(" "),
+        );
+        polygon.classList.add("campus-block-shape", "campus-open-outline");
+        group.appendChild(polygon);
       }
 
       function campusConnectionPoints(a, b) {
-        const dx = b.cx - a.cx;
-        const dy = b.cy - a.cy;
-        const horizontal = Math.abs(dx) > Math.abs(dy);
+        // Attach walkways to the visible edge of each block instead of
+        // drawing them through the building itself. C uses its centred
+        // entrance as the attachment point because its lower side is open.
+        function anchor(building, other) {
+          if (building.kind === "semihex_open") {
+            // C's outdoor connectors attach to its upper-left / upper-right
+            // edges, just like the E-D and A-B connectors attach to block edges.
+            const dx = other.cx - building.cx;
+            const hw = building.w / 2;
+            const hh = building.h / 2;
+            if (dx < 0) {
+              return {
+                x: building.cx - hw * 0.58,
+                y: building.cy - hh,
+              };
+            }
+            return {
+              x: building.cx + hw * 0.58,
+              y: building.cy - hh,
+            };
+          }
 
-        if (horizontal) {
+          const dx = other.cx - building.cx;
+          const dy = other.cy - building.cy;
+          const hw = building.w / 2;
+          const hh = building.h / 2;
+
+          if (Math.abs(dx) >= Math.abs(dy)) {
+            return {
+              x: building.cx + (dx >= 0 ? hw : -hw),
+              y: building.cy,
+            };
+          }
+
           return {
-            start: { x: a.cx + (dx > 0 ? a.w * 0.34 : -a.w * 0.34), y: a.cy },
-            end: { x: b.cx - (dx > 0 ? b.w * 0.34 : -b.w * 0.34), y: b.cy },
+            x: building.cx,
+            y: building.cy + (dy >= 0 ? hh : -hh),
           };
         }
 
         return {
-          start: { x: a.cx, y: a.cy + (dy > 0 ? a.h * 0.46 : -a.h * 0.46) },
-          end: { x: b.cx, y: b.cy - (dy > 0 ? b.h * 0.46 : -b.h * 0.46) },
+          start: anchor(a, b),
+          end: anchor(b, a),
         };
-      }
-
-      function campusConnectionPath(a, b) {
-        const points = campusConnectionPoints(a, b);
-        const start = points.start;
-        const end = points.end;
-
-        // Campus walkways are intentionally simple and direct.
-        // Use one straight segment from the edge of one block to the
-        // edge of the next, matching the user's sketch.
-        return `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
       }
 
       function drawCampusConnections(svg, buildings, connections) {
         const byId = {};
-
         buildings.forEach((building) => {
           byId[building.id] = building;
         });
 
-        connections.forEach((connection) => {
+        // Always show the physical block-to-block connections on the campus view.
+        // Use the backend connections when available, with the actual campus
+        // chain as a fallback so the connectors are still visible if the API
+        // returns an empty connection list.
+        const visibleConnections =
+          Array.isArray(connections) && connections.length > 0
+            ? connections
+            : [
+                { from: "E", to: "D" },
+                { from: "D", to: "C" },
+                { from: "C", to: "B" },
+                { from: "B", to: "A" },
+              ];
+
+        visibleConnections.forEach((connection) => {
           const a = byId[connection.from];
           const b = byId[connection.to];
+          if (!a || !b) return;
 
-          if (!a || !b) {
-            return;
-          }
-
-          const d = campusConnectionPath(a, b);
+          const points = campusConnectionPoints(a, b);
+          const pathData = `M ${points.start.x} ${points.start.y} L ${points.end.x} ${points.end.y}`;
 
           const outer = document.createElementNS(svgns, "path");
-          outer.setAttribute("d", d);
-          outer.classList.add("campus-link");
+          outer.setAttribute("d", pathData);
+          outer.setAttribute("class", "campus-link");
+          outer.style.pointerEvents = "none";
           svg.appendChild(outer);
 
           const inner = document.createElementNS(svgns, "path");
-          inner.setAttribute("d", d);
-          inner.classList.add("campus-link-inner");
+          inner.setAttribute("d", pathData);
+          inner.setAttribute("class", "campus-link-inner");
+          inner.style.pointerEvents = "none";
           svg.appendChild(inner);
         });
-      }
-
-      function campusMassPoints() {
-        return [
-          [120, 115],
-          [360, 92],
-          [500, 105],
-          [640, 92],
-          [890, 120],
-          [925, 285],
-          [875, 355],
-          [900, 525],
-          [760, 610],
-          [650, 585],
-          [610, 730],
-          [390, 735],
-          [350, 610],
-          [225, 565],
-          [105, 455],
-          [125, 300],
-        ]
-          .map((point) => point.join(","))
-          .join(" ");
-      }
-
-      function campusZonePoints(building) {
-        const zones = {
-          E: [
-            [145, 135],
-            [360, 112],
-            [405, 205],
-            [375, 330],
-            [155, 315],
-            [125, 225],
-          ],
-          A: [
-            [595, 112],
-            [865, 135],
-            [895, 225],
-            [870, 330],
-            [625, 315],
-            [575, 205],
-          ],
-          D: [
-            [205, 330],
-            [390, 325],
-            [455, 395],
-            [420, 545],
-            [255, 555],
-            [180, 455],
-          ],
-          B: [
-            [610, 325],
-            [795, 330],
-            [850, 455],
-            [775, 550],
-            [585, 540],
-            [545, 395],
-          ],
-          M: [
-            [420, 535],
-            [580, 535],
-            [640, 610],
-            [575, 710],
-            [425, 710],
-            [360, 610],
-          ],
-          F: [
-            [430, 705],
-            [570, 705],
-            [600, 755],
-            [560, 820],
-            [440, 820],
-            [400, 755],
-          ],
-        };
-        return (zones[building.id] || [])
-          .map((point) => point.join(","))
-          .join(" ");
       }
 
       function drawCampusBuildings(svg, buildings) {
         buildings.forEach((building) => {
           const group = document.createElementNS(svgns, "g");
-          group.classList.add("campus-block");
+          group.setAttribute("class", "campus-block");
+          group.setAttribute("data-building", building.id);
+
           group.addEventListener("click", () => enterBuilding(building.id));
 
-          const shape = document.createElementNS(svgns, "polygon");
-          shape.setAttribute(
-            "points",
-            hexagonPoints(building.cx, building.cy, building.w, building.h),
-          );
-          shape.classList.add("campus-block-shape");
-          group.appendChild(shape);
+          if (building.kind === "semihex_open") {
+            drawOpenSemiHexagon(group, building);
+          } else {
+            const polygon = document.createElementNS(svgns, "polygon");
+            polygon.setAttribute(
+              "points",
+              hexagonPoints(building.cx, building.cy, building.w, building.h),
+            );
+            polygon.classList.add("campus-block-shape");
+            group.appendChild(polygon);
+          }
 
-          addWrappedCampusLabel(group, building.cx, building.cy, building.name);
+          const label = document.createElementNS(svgns, "text");
+          label.setAttribute("x", building.cx);
+          label.setAttribute("y", building.cy + 7);
+          label.setAttribute("text-anchor", "middle");
+          label.classList.add("campus-block-label");
+          label.textContent = building.name;
+          group.appendChild(label);
+
           svg.appendChild(group);
         });
       }
@@ -1374,36 +1375,40 @@
           return;
         }
 
-        Object.keys(buildingLayout).forEach((buildingId) => {
-          const tab = document.createElement("span");
+        const buildingOrder = ["A", "B", "C", "D", "E"];
 
-          tab.className =
-            "tab" + (buildingId === currentBuilding ? " active" : "");
+        buildingOrder
+          .filter((buildingId) => buildingLayout[buildingId])
+          .forEach((buildingId) => {
+            const tab = document.createElement("span");
 
-          tab.textContent = buildingLabels[buildingId];
+            tab.className =
+              "tab" + (buildingId === currentBuilding ? " active" : "");
 
-          tab.onclick = () => {
-            if (buildingId === currentBuilding) {
-              return;
-            }
+            tab.textContent = buildingLabels[buildingId];
 
-            recordVisitedFloor();
+            tab.onclick = () => {
+              if (buildingId === currentBuilding) {
+                return;
+              }
 
-            currentBuilding = buildingId;
+              recordVisitedFloor();
 
-            currentFloor = buildingLayout[buildingId][0];
+              currentBuilding = buildingId;
 
-            updateCurrentLocation();
+              currentFloor = buildingLayout[buildingId][0];
 
-            renderBuildingTabs();
+              updateCurrentLocation();
 
-            renderFloorTabs();
+              renderBuildingTabs();
 
-            loadFloor();
-          };
+              renderFloorTabs();
 
-          container.appendChild(tab);
-        });
+              loadFloor();
+            };
+
+            container.appendChild(tab);
+          });
       }
 
       // =========================================================
@@ -1516,6 +1521,20 @@
           const b = floorNodes[edge.to];
 
           if (!a || !b) {
+            return;
+          }
+
+          // B and D ground floors have an entrance-to-stairs graph
+          // connection for routing, but that connection should NOT be
+          // drawn as a visible base-map corridor.  Keep the graph edge
+          // intact so navigation still works; only hide this visual line.
+          const hideGroundEntranceStairs =
+            (currentBuilding === "B" || currentBuilding === "D") &&
+            currentFloor === 0 &&
+            ((a.type === "entrance" && b.type === "stairs") ||
+              (a.type === "stairs" && b.type === "entrance"));
+
+          if (hideGroundEntranceStairs) {
             return;
           }
 
@@ -1650,7 +1669,13 @@
           // ===============================================
           // ENTRANCE
           // ===============================================
-          else if (pos.type === "entrance") {
+          else if (
+            pos.type === "entrance" &&
+            !(
+              (currentBuilding === "B" || currentBuilding === "D") &&
+              currentFloor === 0
+            )
+          ) {
             const entrance = document.createElementNS(svgns, "rect");
 
             entrance.setAttribute("x", pos.x - 18);
@@ -1985,15 +2010,12 @@
 
           const offsetY = (dx / length) * lane;
 
-          const nodePad = 14;
+          // Extend the direction line all the way to each node center.
+          // Room/stair/entrance boxes are redrawn on top of the line,
+          // so the visible line reaches the exact edge of each box.
+          const trimStart = 0;
 
-          const headPad = 10;
-
-          const maxTrim = Math.max(0, (length - 18) / 2);
-
-          const trimStart = Math.min(nodePad, maxTrim);
-
-          const trimEnd = Math.min(nodePad + headPad, maxTrim);
+          const trimEnd = 0;
 
           const unitX = dx / length;
 
@@ -2124,11 +2146,14 @@
 
           startDot.setAttribute("r", "9");
 
-          startDot.setAttribute("fill", "#f2a93b");
+          startDot.setAttribute("fill", "#00d9ff");
 
           startDot.setAttribute("stroke", "#fff");
 
           startDot.setAttribute("stroke-width", "2");
+
+          startDot.classList.add("destination-pulse");
+          startDot.style.pointerEvents = "none";
 
           svg.appendChild(startDot);
         }

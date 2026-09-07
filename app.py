@@ -54,28 +54,17 @@ room_ranges = {
         7: [(706, 713), (722, 728)],
     },
 
-    # M is the Main Entrance hexagon, sitting between the D and B
-    # wings, next to the PRP Canteen.
-    "M": {
+    # C combines the former Main Entrance and F block.
+    # Overlapping F room numbers are represented once in the merged ranges.
+    "C": {
         0: [(14, 16)],
-        1: [(115, 116)],
+        1: [(115, 117)],
         2: [(213, 218)],
         3: [(312, 316)],
         4: [(411, 413)],
         5: [(512, 517)],
-        6: [(610, 610)],
+        6: [(610, 614)],
         7: [(714, 715)],
-    },
-
-    # F is the bottom hexagon below the Main Entrance. It has no
-    # rooms on the ground floor and no rooms on floor 7.
-    "F": {
-        1: [(117, 117)],
-        2: [(216, 217)],
-        3: [(315, 315)],
-        4: [(412, 412)],
-        5: [(513, 516)],
-        6: [(611, 614)],
     },
 
     "E": {
@@ -96,8 +85,7 @@ building_names = {
     "B": "B Block",
     "D": "D Block",
     "E": "E Block",
-    "F": "F Block",
-    "M": "Main Entrance",
+    "C": "C Block",
 }
 
 
@@ -370,6 +358,35 @@ def perimeter_points(count, cx, cy, width, height, shape="rectangle", rotation=-
                 acc += length
         return points
 
+    if shape == "semihex_open":
+        # C Block floor layout follows the supplied reference:
+        # 16 on the left, 15 at the bottom centre, 14 on the right,
+        # with the entrance and staircase centred ABOVE room 15.
+        if count == 3:
+            return [
+                (cx - width * 0.34, cy + height * 0.08),  # 16
+                (cx,             cy + height * 0.42),      # 15
+                (cx + width * 0.34, cy + height * 0.08),  # 14
+            ]
+
+        if count <= 3:
+            return [
+                (cx - width * 0.34, cy + height * 0.08),
+                (cx, cy + height * 0.42),
+                (cx + width * 0.34, cy + height * 0.08),
+            ][:count]
+
+        points = []
+        for n in range(count):
+            angle = math.pi + (math.pi * n / max(1, count - 1))
+            radius_x = width * 0.34
+            radius_y = height * 0.28
+            points.append((
+                cx + radius_x * math.cos(angle),
+                cy + radius_y * math.sin(angle),
+            ))
+        return points
+
     # Rectangle: distribute rooms equally along the four sides.
     half_w = width / 2
     half_h = height / 2
@@ -419,8 +436,11 @@ def generate_room_positions(building, floor, ranges):
         points = perimeter_points(
             count, cx, cy, width * 0.92, height * 0.82, shape="hexagon"
         )
+    elif building == "C":
+        points = perimeter_points(
+            count, cx, cy, width * 0.62, height * 0.72, shape="semihex_open"
+        )
     else:
-        # Keep M/F as compact organic single-pod layouts.
         points = curved_corridor_points(
             cx, cy, width * 0.62, height * 0.55,
             count, seed=f"{building}-{floor}"
@@ -437,7 +457,12 @@ def generate_room_positions(building, floor, ranges):
             "room_number": room_number,
         }
 
-    # Put the staircase just outside the left side of the footprint.
+    # C Block entrance/staircase are centred ABOVE the room corridor,
+    # matching the supplied C-floor reference image.
+    if building == "C":
+        return (cx, cy - height * 0.42)
+
+    # Other blocks keep their staircase just outside the left side.
     return (margin, cy)
 
 
@@ -509,9 +534,9 @@ for building in room_ranges:
 
     positions[entrance_node] = {
 
-        "x": 60,
+        "x": (CANVAS_WIDTH / 2 + 50) if building == "C" else 60,
 
-        "y": CANVAS_HEIGHT - 80,
+        "y": (CANVAS_HEIGHT - 80) if building != "C" else (CANVAS_HEIGHT / 2 - min(620, CANVAS_HEIGHT - 220) * 0.72 / 2 - 105),
 
         "floor": 0,
 
@@ -543,12 +568,20 @@ for building, floors in \
         # neighbouring hexagons.
         # -------------------------------------------------
 
-        for i in range(len(room_numbers)):
-            room1 = f"{building}-{room_numbers[i]}"
-            room2 = f"{building}-{room_numbers[(i + 1) % len(room_numbers)]}"
+        # C is intentionally an open corridor: connect each room to the
+        # next room only, leaving the entrance/open side unclosed. This
+        # produces the open-bottom C-block corridor.
+        if building == "C":
+            room_pairs = zip(room_numbers, room_numbers[1:])
+        else:
+            room_pairs = (
+                (room_numbers[i], room_numbers[(i + 1) % len(room_numbers)])
+                for i in range(len(room_numbers))
+            )
 
-            # The final room connects back to the first room so A/E
-            # rectangles and B/D hexagons are real closed corridors.
+        for room_a, room_b in room_pairs:
+            room1 = f"{building}-{room_a}"
+            room2 = f"{building}-{room_b}"
             if room1 != room2:
                 add_edge(
                     room1,
@@ -632,10 +665,9 @@ for building in room_ranges:
 
 campus_walkways = [
     ("E", "D", 14),
-    ("D", "M", 10),
-    ("M", "B", 10),
+    ("D", "C", 10),
+    ("C", "B", 10),
     ("B", "A", 14),
-    ("M", "F", 8),
 ]
 
 for from_building, to_building, distance in campus_walkways:
@@ -986,6 +1018,28 @@ def normalize_room(
             "--",
             "-"
         )
+
+    # -----------------------------------------------------
+    # Entrance aliases
+    # Treat each building entrance as a valid room-like endpoint.
+    # Examples: A Entrance, A-Entrance, Entrance A,
+    # and A Block Entrance.
+    # -----------------------------------------------------
+
+    entrance_match = re.fullmatch(
+        rf'(?:([{BUILDING_LETTERS}])[-]?BLOCK[-]?)?ENTRANCE(?:[-]?([{BUILDING_LETTERS}])[-]?BLOCK)?',
+        value,
+    )
+
+    if entrance_match:
+        prefix = entrance_match.group(1)
+        suffix = entrance_match.group(2)
+        building = prefix or suffix
+
+        if building:
+            candidate = f"{building}-ENTRANCE"
+            if candidate in graph:
+                return candidate
 
     # -----------------------------------------------------
     # Direct graph lookup
@@ -1587,7 +1641,7 @@ def get_floor():
             for name, pos
             in nodes_on_floor.items()
 
-                ],
+            ],
 
         "edges":
             edges
@@ -1619,8 +1673,11 @@ CAMPUS_LAYOUT = {
     "A": {"cx": 780, "cy": 180, "w": 220, "h": 320, "kind": "wing"},
     "D": {"cx": 300, "cy": 455, "w": 170, "h": 170, "kind": "pod"},
     "B": {"cx": 700, "cy": 455, "w": 170, "h": 170, "kind": "pod"},
-    "M": {"cx": 500, "cy": 620, "w": 160, "h": 150, "kind": "pod"},
-    "F": {"cx": 500, "cy": 805, "w": 120, "h": 110, "kind": "pod"},
+    # C combines the former Main Entrance and F footprints.
+    # The bottom edge is open at the centre for the entrance.
+    # C is kept below B/D with a clear visual gap. Its entrance is exactly
+    # centered horizontally on the open bottom side.
+    "C": {"cx": 500, "cy": 700, "w": 300, "h": 240, "kind": "semihex_open", "entrance_x": 500, "entrance_y": 820},
 }
 
 
